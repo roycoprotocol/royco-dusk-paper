@@ -1,6 +1,6 @@
-# Royco Dusk
+# Royco Dusk Paper
 
-Technical specification for Royco Dusk.
+Formal specifications and proofs for the Royco Dusk protocol.
 
 The compiled paper is available at [royco_dusk_paper.pdf](./royco_dusk_paper.pdf).
 
