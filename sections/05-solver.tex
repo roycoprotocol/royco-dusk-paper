@@ -25,7 +25,7 @@ so gas is constant with no data-dependent exit. And the loop is a short
 sweep over already-audited valuation code, with no invariant inversion
 and a unique root.
 
-\subsection{Two brackets: solve, then check expressibility}
+\subsection{The search bracket and the expressible range}
 \label{sec:solver:bracket}
 
 The solver uses the \emph{conservation bracket} $\mathcal{B}$ of
@@ -90,7 +90,7 @@ surrounding pool operation hitting its own Balancer limits. None of these
 is a failure of the solve, and in each case the cached rate is left
 untouched, so a stale rate can never be read after a failed sync.
 
-\subsection{Tolerance and rounding}
+\subsection{Iteration count and rounding}
 \label{sec:solver:rounding}
 
 Two policy choices fix the solver's behaviour:
