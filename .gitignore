@@ -1,0 +1,31 @@
+# Build output directories.
+out/
+build/
+
+# Stray LaTeX artifacts if someone runs latex outside the Makefile.
+*.aux
+*.log
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.run.xml
+*.bcf
+*.nav
+*.snm
+*.vrb
+
+# All PDFs are build artifacts...
+*.pdf
+# ...except the committed paper output.
+!royco_dusk_paper.pdf
+
+# OS / editor cruft.
+.DS_Store
+*.swp
+*~
+.vscode/
+.idea/

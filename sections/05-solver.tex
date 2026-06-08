@@ -1,0 +1,142 @@
+\section{The on-chain solver}
+\label{sec:solver}
+
+\Cref{thm:main} gives a unique root in a bracket whose endpoints straddle
+it. This section runs the solver: integer bisection, in bounded gas. The
+conditions that make the theorem apply on-chain are stated as explicit
+obligations.
+
+\subsection{Integer bisection}
+\label{sec:solver:bisection}
+
+The solver bisects $E$ on $\mathcal{B}$ at integer (WAD) precision. Each
+step halves the bracket and keeps the half whose endpoints still straddle
+the sign change. The bracket holds $\lvert\mathcal{B}\rvert = x_{\max}+1$
+integers, so after $K = \lceil \log_2(\lvert\mathcal{B}\rvert) \rceil$
+steps it has collapsed to a single integer $x^\star$, the boundary with
+$E(x^\star) \geq 0 > E(x^\star + 1)$. The published rate is
+$y^\star = x^\star / N$, rounded toward the senior tranche.
+
+Bisection, not Newton, for three reasons. $F$ is non-smooth, its slope
+jumping at branch boundaries (\cref{lem:F}), so a tangent-following
+method has no derivative to follow, whereas bisection needs only that
+$E$ be non-increasing. The iteration count $K$ is fixed at deploy time,
+so gas is constant with no data-dependent exit. And the loop is a short
+sweep over already-audited valuation code, with no invariant inversion
+and a unique root.
+
+\subsection{Two brackets: solve, then check expressibility}
+\label{sec:solver:bracket}
+
+The solver uses the \emph{conservation bracket} $\mathcal{B}$ of
+\cref{thm:main} as its search domain. Its endpoints straddle the root by
+construction, so the search always brackets a unique answer. Each probe
+evaluates the frozen-$L$ valuation in closed form, not the pool's
+invariant solver, so no probe re-triggers the E-CLP domain check. That
+check runs once, when $L$ is computed at solve start from the live
+balances.
+
+The root is the economically correct rate, but the deployed pool can only
+\emph{quote} rates inside its price band $[\alpha, \beta]$. With $\alpha,
+\beta$ the lower and upper bounds on the senior price in quote, the
+expressible range is
+\begin{equation}
+  x \;\in\; [N\alpha,\ N\beta].
+\end{equation}
+These bounds are per-solve: the configured band constrains the
+rate-scaled price, so it is recentered at the cached rate $y_0$ (and if
+the pool sorts the senior share as token1, the senior bounds are the
+reciprocals of the pool's configured bounds, swapped). After solving,
+the kernel checks $x^\star \in [N\alpha, N\beta]$. If the root
+falls outside, the rate is real but unquotable: the sync reverts rather than clipping to a band edge and
+publishing a rate the pool cannot honour. This is the only
+market-condition revert in the solve, and it is a genuine economic
+signal (a senior loss larger than the pool's band can represent), not a
+solver fragility.
+
+\subsection{Why the solve always converges}
+\label{sec:solver:convergence}
+
+\Cref{thm:main} is a statement about the function $E$. For it to govern
+the on-chain loop, three implementation invariants must hold. Each is
+cheap and is listed as an obligation in \cref{sec:solver:obligations}.
+
+\begin{description}
+  \item[Frozen inputs.] Every input to $E$ ($\STraw$, $N$, $f$, the
+    invariant $L$, the cached rate $y_0$, and the checkpoint) is read
+    once at solve start and never re-read. Bisection compares $E$ at
+    different probes and assumes one fixed function. Any external reads
+    inside $F$ (the yield-model view, the block timestamp) are constant
+    across the bisection, since it runs in one block against a frozen
+    checkpoint, so no probe sees a different function.
+  \item[Live supply.] $N \geq 1$. The map divides by $N$, so the supply
+    must be positive. A minimum senior position minted at market
+    creation and never redeemable keeps $N$ bounded away from zero for
+    the life of the market, so the division is always defined.
+  \item[Total $E$.] Every probe returns a value rather than reverting.
+    $E$ has two parts. $P_A$ maps every $x \in \mathcal{B}$ to a senior
+    balance inside the E-CLP's computable domain
+    (\S\ref{sec:solver:bracket}), so it never reverts. $F$ reverts only
+    on a checkpoint that violates NAV conservation, and every checkpoint
+    the accountant commits conserves by construction
+    (\cref{sec:overview:waterfall}). So on the reachable state space $E$
+    is defined at every probe in $\mathcal{B}$.
+\end{description}
+
+Under these three invariants, the solve terminates in exactly $K$ steps
+and returns the unique root. The only remaining reverts are external to
+the solver: a paused market, a stale or reverting price oracle, or the
+surrounding pool operation hitting its own Balancer limits. None of these
+is a failure of the solve, and in each case the cached rate is left
+untouched, so a stale rate can never be read after a failed sync.
+
+\subsection{Tolerance and rounding}
+\label{sec:solver:rounding}
+
+Two policy choices fix the solver's behaviour:
+\begin{description}
+  \item[Iteration count] is the $K$ of \cref{sec:solver:bisection},
+    hardcoded per market. Each step of $E$ lies in $\{-1, 0\}$
+    (\cref{sec:existence:mono}), so $K$ halvings collapse the bracket to
+    the single integer boundary $x^\star$. No residual or
+    iteration-count check is needed.
+  \item[Rounding] sends the final $x^\star$, and the published
+    $y^\star = x^\star/N$, toward the senior tranche. Together with the
+    floor inside $P_A$ (\cref{eq:PA}) and the round-down of the
+    invariant, every rounding step favours the protected tranche.
+\end{description}
+
+\subsection{Implementation obligations}
+\label{sec:solver:obligations}
+
+The correctness argument rests on the following, each verifiable per
+market. The first group makes $E$ the right function, the second makes
+the solve converge, the third keeps every step conservative.
+
+\begin{description}
+  \item[Senior independence.] The senior raw NAV is marked from sources
+    that do not read the pool (its BPT value, its spot price, or the
+    published rate), so the loop has exactly one fixed-point variable.
+  \item[Valuation wiring.] The senior leg is lifted to WAD by its
+    decimal factor $10^{18 - d_s}$ ($d_s$ its native decimals) and the
+    published senior rate. The quote leg is lifted by $10^{18 - d_q}$
+    and its rate $q$.
+  \item[Frozen curve.] $L$ is computed once per solve from the balances
+    scaled at $y_0$, rounded down (the underestimate), and held fixed across the
+    bisection. $V_{\max}$ is the value at the upper corner of this same
+    frozen curve.
+  \item[Clamp.] The valuation uses the integral form
+    $\widehat{V}(y) = \int_0^y \min(D, N)$ (\cref{sec:setup:PA}), with $N$
+    read at solve start. In closed form this is $N y$ below the rate
+    where demand falls to $N$, and $V$ shifted by a constant above it
+    (the split is unique when demand is monotone, as for the Gyro
+    E-CLP). Capping the share count inside the point value,
+    $b_q + y\min(D,N)$, is a different function that is not $N$-Lipschitz
+    and breaks monotonicity.
+  \item[Frozen inputs, live supply, total $E$.] As in
+    \cref{sec:solver:convergence}: read once, $N \geq 1$, conserving
+    checkpoint.
+  \item[Conservative rounding.] Senior-favouring at every step: the
+    invariant down, the valuation floor, and the published rate toward
+    senior.
+\end{description}

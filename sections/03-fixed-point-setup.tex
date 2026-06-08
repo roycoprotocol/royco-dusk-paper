@@ -1,0 +1,148 @@
+\section{The fixed-point setup}
+\label{sec:setup}
+
+Every pool operation triggers a sync, and every sync must publish one
+number: the senior share rate $y$. \Cref{sec:overview:dawn-to-dusk}
+showed why this is a fixed point, not an oracle read. This section makes
+it precise: one equation in one unknown, then two facts about one
+function.
+
+\subsection{What we must prove}
+\label{sec:setup:roadmap}
+
+Write the senior NAV the sync must produce as $x$. We will see that a
+self-consistent $x$ is exactly a zero of the \emph{error function}
+\[
+  E(x) \;=\; F\!\left(P_A(x / N)\right) - x,
+\]
+where $P_A$ values the junior collateral at a candidate rate and $F$ is
+the accountant's sync map. The on-chain solver finds that zero by
+integer bisection, and bisection needs exactly two facts:
+
+\begin{description}
+  \item[(Monotonicity)] $E$ never rises: each step holds or falls. So the
+    values where $E \geq 0$ form an initial segment, the crossing is
+    \emph{unique}, and bisection knows which way to step.
+  \item[(Bracketing)] $E$ is non-negative at the bottom of the search range
+    and negative at the top. This makes the crossing \emph{exist} and
+    brackets it.
+\end{description}
+
+The rest of this section defines the three objects $F$, $P_A$, and $E$.
+\Cref{sec:existence} proves the two facts. \Cref{sec:solver} runs the
+solver. The argument rests on nothing else.
+
+\subsection{The sync map $F$}
+\label{sec:setup:F}
+
+On each sync, the Dusk kernel calls the shared Royco accountant, whose
+sync map we denote $F$. Given the
+current raw NAVs of both tranches, $F$ runs the attribution and
+settlement steps of \cref{sec:overview:waterfall} against the stored
+checkpoint and returns the effective NAVs:
+\[
+  F\colon \bigl(\STraw,\ \JTraw;\ \text{checkpoint}\bigr) \longmapsto (\STeff,\ \JTeff).
+\]
+Two properties of $F$ matter downstream (\cref{sec:overview:waterfall}).
+It conserves NAV ($\STraw + \JTraw = \STeff + \JTeff$), and it is
+non-decreasing and 1-Lipschitz in each input (\cref{lem:F}).
+Conservation holds by construction: every stored checkpoint is itself a
+prior output of $F$.
+
+In a Dusk market the senior raw NAV is exogenous to the loop: it is the
+value of the senior tranche's own assets, marked independently of the
+pool. Only the junior raw NAV depends on the senior rate, because the
+junior's collateral is the BPT. The senior side therefore drops out, and
+for one sync, with $\STraw$ and the checkpoint fixed, we read $F$ as a
+function of a single variable:
+\[
+  F\colon \JTraw \longmapsto \STeff.
+\]
+$F$ returns $\STeff$ \emph{gross} of protocol fees: a fee accrues as a
+separate NAV claim settled outside $F$, never netted out of $\STeff$. So
+$y = \STeff/N$ is consistent only when $N$ counts the same shares the
+gross NAV backs, including any minted for fees.
+
+\subsection{The conservative valuation $P_A$}
+\label{sec:setup:PA}
+
+The junior tranche owns a fraction $f$ of a
+Gyro E-CLP pool whose two legs are the senior share and a quote asset.
+$P_A(y)$ is the value of that position when the senior share trades at
+rate $y$, marked conservatively so that no manipulation and no rounding
+can ever credit the junior tranche more than it could withdraw.
+
+\paragraph{The frozen curve.}
+The senior leg is priced by the rate the kernel publishes. At the start of a solve the
+kernel reads the cached rate $y_0$ once and computes the pool invariant
+$L$ from the rate-scaled balances, rounded down in favour of the senior
+tranche. $L$ is then held fixed while the candidate rate $y$ varies.
+Freezing $L$ is what makes $P_A$ a clean function of $y$ alone, which the
+monotonicity proof relies on. The implementation details of the scaling
+and rounding are collected in \cref{sec:solver:obligations}.
+
+\paragraph{The fair point.}
+Given $L$, the conservative value at candidate rate $y$ is the pool's
+value at its \emph{fair point}: the point on the frozen curve whose
+\emph{marginal price} (its local slope, the spot rate for an
+infinitesimal trade) equals $y$. Write this value $V(y)$ and write
+\[
+  D(y) \;=\; V'(y),
+\]
+the pool's \emph{demand} for senior shares at price $y$, that is, the
+senior reserve the fair point holds. Two geometric facts about the
+E-CLP, proved in \cref{sec:existence:mono}, are all we need: $V$ is
+non-decreasing, with $V'(y) = D(y) \geq 0$ (a higher senior price raises
+the value of the senior shares the pool holds), and the demand $D(y)$ is
+finite at every rate the curve can express.
+
+\paragraph{The clamp.}
+Far below the operating rate the curve's demand $D(y)$ grows without
+bound, but the pool can hold at most the total supply $N$ (even if every
+senior holder sold into it). The true demand cannot exceed $N$, so we
+cap it there:
+\[
+  \Dc(y) \;=\; \min\bigl(D(y),\ N\bigr),
+  \qquad
+  \widehat{V}(y) \;=\; \int_0^y \Dc(u)\,du.
+\]
+By definition $\widehat{V}(0) = 0$, and $V(0) \geq 0$ since a reserve
+is non-negative. With $\Dc \leq D = V'$ this gives
+$0 \leq \widehat{V} \leq V$ everywhere: the cap only lowers the mark and
+preserves conservatism. At any healthy
+rate the live demand is far below $N$ and the cap is inactive. Its
+purpose is to bound demand by the supply, which \cref{sec:existence}
+turns into unconditional monotonicity.
+
+\paragraph{The valuation.}
+The junior tranche's pro-rata claim, rounded down in favour of the
+senior tranche, is the \emph{conservative BPT valuation}:
+\begin{equation}
+  P_A(y) \;=\; \bigl\lfloor\, f \cdot \widehat{V}(y) \,\bigr\rfloor.
+  \label{eq:PA}
+\end{equation}
+By the geometric facts and the clamp, $P_A$ is non-decreasing in $y$ and
+Lipschitz with constant $f N$ (\cref{sec:existence:mono}). Within a
+single solve $V$ depends only on $L$ and $y$, not on the live pool
+composition. A fee-free swap conserves the pool's true invariant, and
+the $L$ the solver consumes is a round-down underestimate of it
+recomputed from live balances, so $L \leq L_{\mathrm{true}}$ for every
+reachable composition. A swap (or a donation, which Balancer V3 ignores
+since it accounts internally) can therefore move the mark only within
+the round-down band, and never above the true fair value. The mark is
+manipulation-bounded, not immovable.
+
+\subsection{The fixed-point equation}
+\label{sec:setup:circularity}
+
+Chaining the definitions, $\JTraw = P_A(\STeff/N)$ and
+$\STeff = F(\JTraw)$, so the senior NAV must reproduce itself:
+\begin{equation}
+  x \;=\; F\!\left(P_A\!\left(x / N\right)\right).
+  \label{eq:fixed-point}
+\end{equation}
+A solution is a zero of the error function $E$
+(\cref{sec:setup:roadmap}), and the published rate is
+$y^\star = x^\star / N$. \Cref{sec:existence} proves $E$ has exactly one
+zero (Monotonicity) inside a range whose endpoints straddle it
+(Bracketing).

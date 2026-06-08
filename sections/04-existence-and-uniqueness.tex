@@ -1,0 +1,176 @@
+\section{Existence and uniqueness of the solved rate}
+\label{sec:existence}
+
+This section proves the two facts from \cref{sec:setup:roadmap}: $E$ is
+non-increasing (Monotonicity), and its sign changes across a search range
+whose endpoints we can write down (Bracketing). Together they give a unique
+self-consistent rate that bisection finds deterministically.
+
+\begin{theorem}[the solved rate exists and is unique]
+\label{thm:main}
+Fix $\STraw$, the checkpoint, the supply $N \geq 1$, and the frozen
+invariant $L$ at the start of a sync. On the bracket
+\[
+  \mathcal{B} \;=\; \bigl[\,0,\ x_{\max}\,\bigr],
+  \qquad
+  x_{\max} \;=\; \STraw + \lfloor f\,V_{\max}\rfloor + 1,
+\]
+where $V_{\max} = \sup_y V(y)$ is the pool value at the all-quote corner
+(the senior shares all sold), the integer error function
+$E(x) = F(P_A(x/N)) - x$ is
+non-increasing \textup{(Monotonicity)} and satisfies $E(0) \geq 0$ and
+$E(x_{\max}) < 0$ \textup{(Bracketing)}. Hence the integers where $E \geq 0$
+form an initial segment $[0, x^\star]$ with a unique right endpoint $x^\star$, the
+self-consistent senior NAV, and bisection on the predicate
+$E(x) \geq 0$ finds it.
+\end{theorem}
+
+\Cref{sec:existence:mono,sec:existence:sign} prove the two pillars, and
+\cref{sec:existence:generality} records what the argument assumes about
+the pool, so an auditor can check it per market.
+
+\subsection{Monotonicity: $E$ is non-increasing}
+\label{sec:existence:mono}
+
+$E(x) = F(P_A(x/N)) - x$. The $-x$ term falls by one per step, so it is
+enough to show the composition $x \mapsto F(P_A(x/N))$ rises by at most
+one per step. We bound each stage in turn.
+
+\paragraph{Stage 1: $f\widehat{V}$ moves by at most $1$ per step, so $P_A$ moves by $0$ or $1$.}
+Fix the invariant $L$ at the pre-solve cached rate, as
+\cref{sec:setup:PA} requires. The conservative pool value at rate $y$ is
+the quote it holds plus its senior shares marked at $y$,
+\[
+  V(y) \;=\; b_q(y) \;+\; y\,D(y),
+\]
+where $D(y)$ is the pool's demand for senior shares at price $y$ and
+$b_q(y)$ is the quote reserve at the same fair point. Moving along the
+curve $db_q/dD = -y$ (the slope of the reserve curve is the price), so
+the rebalancing terms cancel:
+\[
+  \frac{dV}{dy}
+    \;=\; \underbrace{\frac{db_q}{dD}\frac{dD}{dy} + y\,\frac{dD}{dy}}_{=\,0}
+       \;+\; D(y)
+    \;=\; D(y) \;\geq\; 0.
+\]
+This is the envelope theorem: the first-order effect of the rebalancing
+variable vanishes at the fair point, leaving the direct term. The
+cancellation holds on the open band $(\alpha, \beta)$. Below it the pool
+is all senior and $V(y) = y\,D(\alpha)$ rises linearly; above it the
+pool is all quote and $V$ is constant at $V_{\max}$. Both pieces are
+non-decreasing and join the band continuously, so $V$ is non-decreasing
+throughout.
+
+The clamp now does its one job. With $\Dc(y) = \min(D(y), N)$ the
+capped value $\widehat{V}$ has $\widehat{V}'(y) = \Dc(y) \leq N$
+everywhere, so for $y > y'$,
+\[
+  0 \;\leq\; \widehat{V}(y) - \widehat{V}(y') \;\leq\; N\,(y - y').
+\]
+The candidate rate is $y = x/N$, so a unit step in $x$ moves
+$f\widehat{V}$ by at most $f N \cdot \tfrac1N = f \leq 1$. A real
+increase of at most $1$ changes a floor by $0$ or $1$, so
+$P_A = \lfloor f \widehat{V}\rfloor$ rises by $0$ or $1$ per step, and
+never falls.
+
+\paragraph{Stage 2: $F$ is 1-Lipschitz.}
+This is \cref{lem:F} below: $0 \leq F(j) - F(j') \leq j - j'$ for
+$j > j'$.
+
+\paragraph{Composition.}
+The chain $x \mapsto x/N \mapsto P_A \mapsto F$ multiplies the per-stage
+factors,
+\[
+  \underbrace{\frac{1}{N}}_{\div\, N}
+  \;\cdot\;
+  \underbrace{f N}_{P_A}
+  \;\cdot\;
+  \underbrace{1}_{F}
+  \;=\; f \;\leq\; 1,
+\]
+since the junior owns at most the whole pool ($f \leq 1$). This product
+is the \emph{loop gain} $g = f$: the dollars that return to the senior
+NAV after one trip around the loop, per dollar sent in. Capping demand
+at the supply holds it at or below one \emph{by construction}, with no
+runtime condition to check.
+
+On the integer lattice this gives the result directly. A unit step in
+$x$ moves $P_A$ by $0$ or $1$ (Stage 1), and $F$ is 1-Lipschitz (Stage
+2), so $F(P_A(x/N))$ rises by at most $1$. Subtracting the $-x$ term,
+\[
+  E(x{+}1) - E(x) \;\in\; \{-1,\ 0\}.
+\]
+$E$ is non-increasing, so the integers with $E \geq 0$ form an initial
+segment $[0, x^\star]$. At its right endpoint the next step must be a drop of
+$1$ (a flat step would keep $E \geq 0$), so $x^\star$ is the unique
+integer with $E(x^\star) \geq 0 > E(x^\star{+}1)$. The drop being
+exactly $1$ and $E$ integer-valued force $E(x^\star) = 0$, an exact
+fixed point. When $f$ is near $1$ a few integers can satisfy $E = 0$.
+Conservation pins $\JTeff$ identically across them, so the root choice
+leaves the junior's entitlement unchanged. Bisection returns the
+largest, $x^\star$, the largest self-consistent senior rate. This proves
+Monotonicity.
+
+\begin{lemma}[$F$ is non-decreasing and 1-Lipschitz in $\JTraw$]
+\label{lem:F}
+Fix $\STraw$ and the checkpoint and vary $j = \JTraw$. Then
+$0 \leq F(j) - F(j') \leq j - j'$ for $j > j'$.
+\end{lemma}
+
+\begin{proof}
+$F$ reaches $\STeff$ through two stages
+(\cref{sec:overview:waterfall}), each with non-negative coefficients in
+$[0,1]$: attribution splits the raw delta by a claim fraction
+$a \in [0,1]$ fixed at the checkpoint (each tranche's claim on a leg is
+at most that leg's raw NAV, by conservation, so $a \leq 1$), and
+settlement routes the result
+through chains of $\min$, $\max$, addition and subtraction (slopes
+$\{0,1\}$) and a yield split (fractions $w$, $1-w$ with $w$ capped).
+So $\STeff$ is non-decreasing in $j$, and so is $\JTeff$. NAV
+conservation finishes it: $\STeff + \JTeff = \STraw + j$, so the two
+slopes sum to exactly $1$, and since both are non-negative each lies in
+$[0,1]$. Thus $F$ is non-decreasing and 1-Lipschitz.
+\end{proof}
+
+\subsection{Bracketing: the endpoints straddle the root}
+\label{sec:existence:sign}
+
+We exhibit a range whose endpoints have opposite signs by construction,
+so no runtime sign-change check can fail.
+
+\emph{Lower endpoint.} At $x = 0$, $E(0) = F(P_A(0)) = \STeff \geq 0$,
+since the accountant holds effective NAVs non-negative, whatever the
+junior collateral is worth.
+
+\emph{Upper endpoint.} $P_A$ is bounded above by $\lfloor f V_{\max}
+\rfloor$. Since $V$ is
+non-decreasing, $\widehat V \leq V \leq V_{\max}$ for every candidate
+rate, whichever way the pool sorts its tokens. By NAV conservation
+$\STeff = \STraw + \JTraw - \JTeff \leq \STraw
++ \JTraw \leq \STraw + \lfloor f V_{\max}\rfloor$ (using $\JTeff \geq
+0$) for every candidate. At
+$x_{\max} = \STraw + \lfloor f V_{\max}\rfloor + 1$ we therefore have
+$E(x_{\max}) = \STeff - x_{\max} \leq -1 < 0$.
+
+Both endpoints are computed once, at solve start, from frozen values.
+The sign change is a theorem, not a checked precondition.
+
+\subsection{What the argument assumes about the pool}
+\label{sec:existence:generality}
+
+The proof uses only two structural facts, which an auditor verifies once
+per market:
+
+\begin{description}
+  \item[Waterfall.] $F$ is non-decreasing and 1-Lipschitz in $\JTraw$
+    (\cref{lem:F}). This is a property of the shared accountant and holds
+    for any Royco market using the standard waterfall.
+  \item[Pool.] The fair value $V$ is non-decreasing in $y$, with
+    $V' = D \geq 0$ by the envelope theorem (\cref{sec:existence:mono}).
+    This holds for the Gyro E-CLP and for any constant-function pool.
+\end{description}
+
+The proof never differentiates $F$, so it survives the
+waterfall's kinks, and never inverts a pool invariant, so it transfers
+unchanged across pool types: only the demand $D$ that the clamp caps is
+pool-specific.
