@@ -132,6 +132,40 @@ since it accounts internally) can therefore move the mark only within
 the round-down band, and never above the true fair value. The mark is
 manipulation-bounded, not immovable.
 
+\paragraph{A capped lower bound, stated plainly.}
+$P_A$ is deliberately a lower bound on the junior's realisable worth,
+not the pool's live fair value. The two differ by exactly the value the
+cap discards,
+\[
+  V(y) - \widehat{V}(y)
+    \;=\; V(0) \;+\; \int_0^y \bigl(D(u) - N\bigr)^{+}\,du,
+\]
+the phantom coverage resting on senior shares beyond the $N$ that exist,
+plus any reserve held at rate $0$. The gap is strict precisely when the
+clamp binds somewhere below $y$ (or $V(0) > 0$); in a pool whose demand
+never reaches $N$ on $[0, y]$ it vanishes and $\widehat{V} = V$ there.
+The under-marking is thus targeted: in the healthy band the cap is
+inactive and $\widehat{V}' = D$ matches fair value at the \emph{margin},
+while the \emph{level} stays a lower bound because the low-rate phantom
+area was already excluded.
+
+This is one of three independent senses the word \emph{conservative}
+carries in this document; a valuation can have any one without the
+others.
+\begin{description}
+  \item[Manipulation-bounded.] The mark reads the frozen invariant $L$
+    and the fair point, not live pool balances, so trading moves it only
+    within the round-down band above.
+  \item[Senior-favouring.] Every rounding step --- the floor in $P_A$,
+    the round-down of $L$, the published rate toward senior --- breaks
+    ties for the protected tranche.
+  \item[Capped lower bound.] The clamp $\min(D, N)$ under-marks in the
+    danger zone, by exactly the gap above.
+\end{description}
+The published senior rate $y^\star$ is built on this capped lower-bound
+valuation by design. \Cref{sec:existence} turns the same cap into
+unconditional monotonicity.
+
 \subsection{The fixed-point equation}
 \label{sec:setup:circularity}
 

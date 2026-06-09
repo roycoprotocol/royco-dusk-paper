@@ -37,16 +37,30 @@ check runs once, when $L$ is computed at solve start from the live
 balances.
 
 The root is the economically correct rate, but the deployed pool can only
-\emph{quote} rates inside its price band $[\alpha, \beta]$. With $\alpha,
-\beta$ the lower and upper bounds on the senior price in quote, the
-expressible range is
+\emph{quote} rates inside its price band. Write $\alpha$ and $\beta$ for
+the lower and upper bounds on the senior rate $y = x/N$ \emph{after} the
+mapping below; the expressible range is then
 \begin{equation}
   x \;\in\; [N\alpha,\ N\beta].
 \end{equation}
-These bounds are per-solve: the configured band constrains the
-rate-scaled price, so it is recentered at the cached rate $y_0$ (and if
-the pool sorts the senior share as token1, the senior bounds are the
-reciprocals of the pool's configured bounds, swapped). After solving,
+These bounds are per-solve. The pool's configured band constrains the
+\emph{rate-scaled} senior price, so it is recentered at the cached rate
+$y_0$, and its orientation depends on the token sort:
+\begin{itemize}
+  \item if the senior share is token0 (price quoted as quote-per-senior),
+    the senior-rate bounds are the configured bounds directly;
+  \item if the senior share is token1 (price quoted as senior-per-quote),
+    they are the reciprocals of the configured bounds, swapped, then
+    recentered at $y_0$; at rates near $1$ this reduces to the
+    $[N/\beta,\, N/\alpha]$ form of earlier materials.
+\end{itemize}
+% TODO(eclp-scaling): confirm the exact y0 rate-scaling factor in the
+% token1 reciprocal mapping against the deployed Gyro E-CLP convention.
+% The configured bounds sit on the rate-scaled price; the reciprocal
+% handles token ordering and the y0 recentering handles rate scaling,
+% but the closed form must be verified against the pool's price
+% convention before publication. Do not assert a bare formula until then.
+After solving,
 the kernel checks $x^\star \in [N\alpha, N\beta]$. If the root
 falls outside, the rate is real but unquotable: the sync reverts rather than clipping to a band edge and
 publishing a rate the pool cannot honour. This is the only
@@ -70,9 +84,17 @@ cheap and is listed as an obligation in \cref{sec:solver:obligations}.
     across the bisection, since it runs in one block against a frozen
     checkpoint, so no probe sees a different function.
   \item[Live supply.] $N \geq 1$. The map divides by $N$, so the supply
-    must be positive. A minimum senior position minted at market
-    creation and never redeemable keeps $N$ bounded away from zero for
-    the life of the market, so the division is always defined.
+    must be positive. This is a \emph{Dusk obligation}, not a property
+    inherited from the shared tranche. The Dawn senior tranche mints
+    shares only on deposit and burns them on redemption, seeds nothing at
+    market creation, and applies no virtual-share offset in its
+    conversion (at zero supply it converts one-to-one), so its supply can
+    fall back to zero. A Dusk market must therefore pin $N \geq 1$ for the
+    life of the market by construction --- for instance a non-redeemable
+    minimum senior position seeded at creation, or a virtual-share offset
+    in the senior conversion --- so the division is always defined. The
+    same floor is what discharges the $N \geq 1$ hypothesis of
+    \cref{thm:main}.
   \item[Total $E$.] Every probe returns a value rather than reverting.
     $E$ has two parts. $P_A$ maps every $x \in \mathcal{B}$ to a senior
     balance inside the E-CLP's computable domain
@@ -88,7 +110,11 @@ and returns the unique root. The only remaining reverts are external to
 the solver: a paused market, a stale or reverting price oracle, or the
 surrounding pool operation hitting its own Balancer limits. None of these
 is a failure of the solve, and in each case the cached rate is left
-untouched, so a stale rate can never be read after a failed sync.
+untouched. Two guarantees follow, and only these two: the failed
+operation reverts before it can \emph{consume} a stale rate, and a
+failed sync never \emph{overwrites} the cache. Ordinary view reads
+(\code{getRate}) still return the last published rate --- staleness is
+prevented from propagating through an operation, not from being read.
 
 \subsection{Iteration count and rounding}
 \label{sec:solver:rounding}
@@ -139,4 +165,30 @@ the solve converge, the third keeps every step conservative.
   \item[Conservative rounding.] Senior-favouring at every step: the
     invariant down, the valuation floor, and the published rate toward
     senior.
+\end{description}
+
+\subsection{Rate-freshness obligations}
+\label{sec:solver:freshness}
+
+The solver publishes $y^\star$; the surrounding pool must consume it
+freshly. These obligations are on the hook--kernel--pool wiring rather
+than the solve, and are listed for the implementer.
+
+\begin{description}
+  \item[Sync coverage.] The hook registers all three before-operation
+    callbacks --- before-swap, before-add, and before-remove --- so
+    every operation triggers a sync.
+  \item[Reload ordering.] The kernel syncs inside the matching before
+    branch; Balancer reloads balances and rates for that operation only
+    after the hook returns, so the operation executes against the freshly
+    published rate. The reload reads the Vault's own internal balances, so
+    the hook must publish through a Vault entrypoint --- a raw token
+    transfer into the pool is not seen by the reload.
+  \item[Non-reverting view.] \code{getRate} returns the cached $y^\star$
+    and must not revert merely because the rate looks stale.
+  \item[Failure semantics.] A failed sync reverts the operation and does
+    not overwrite the cache; ordinary view reads still return the last
+    published rate (\cref{sec:solver:convergence}).
+  \item[Recovery mode.] Recovery-mode removes are a separate path, not
+    bound by this contract.
 \end{description}

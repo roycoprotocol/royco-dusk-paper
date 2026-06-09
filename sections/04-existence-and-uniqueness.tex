@@ -105,11 +105,8 @@ segment $[0, x^\star]$. At its right endpoint the next step must be a drop of
 $1$ (a flat step would keep $E \geq 0$), so $x^\star$ is the unique
 integer with $E(x^\star) \geq 0 > E(x^\star{+}1)$. The drop being
 exactly $1$ and $E$ integer-valued force $E(x^\star) = 0$, an exact
-fixed point. When $f$ is near $1$ a few integers can satisfy $E = 0$.
-Conservation pins $\JTeff$ identically across them, so the root choice
-leaves the junior's entitlement unchanged. Bisection returns the
-largest, $x^\star$, the largest self-consistent senior rate. This proves
-Monotonicity.
+fixed point. Bisection returns this $x^\star$, the largest
+self-consistent senior NAV. This proves Monotonicity.
 
 \begin{lemma}[$F$ is non-decreasing and 1-Lipschitz in $\JTraw$]
 \label{lem:F}
@@ -131,6 +128,43 @@ conservation finishes it: $\STeff + \JTeff = \STraw + j$, so the two
 slopes sum to exactly $1$, and since both are non-negative each lies in
 $[0,1]$. Thus $F$ is non-decreasing and 1-Lipschitz.
 \end{proof}
+
+\begin{remark}[Uniqueness and the loop gain at $f = 1$]
+\label{rem:plateau}
+The clamp fixes the loop gain at $g = f \leq 1$
+(\cref{sec:existence:mono}), which makes $E$ non-increasing but permits
+it to be flat; the two regimes part at the boundary. When $f < 1$
+strictly, $E$ loses a full wei of altitude every $1/(1-f)$ steps on
+average, so the root is unique --- in real arithmetic, and within a wei
+of it on the lattice. When $f = 1$ the return $F(P_A(x/N))$ can track
+$x$ exactly, and the zero set $\{x : E(x) = 0\}$ widens into a
+contiguous integer block: a \emph{plateau} of self-consistent NAVs in
+place of a single root. Strict uniqueness therefore carries the
+hypothesis $f < 1$, which the clamp alone does not supply.
+
+This costs nothing, because the published value is \emph{defined} to be
+the largest plateau integer, the $x^\star$ of \cref{thm:main}, and that
+choice is immaterial to the junior tranche. Across the block $E = 0$
+gives $\STeff = x$, so by NAV conservation
+$\JTeff = \STraw + P_A(x/N) - x$. A unit step inside the block raises
+$F(P_A(x/N))$ by exactly $1$ (the $-x$ term fell by $1$ and $E$ held at
+$0$); as $F$ is $1$-Lipschitz and $P_A$ steps by $0$ or $1$
+(\cref{sec:existence:mono}), this forces $P_A$ up by exactly $1$, whence
+\[
+  \JTeff(x{+}1) - \JTeff(x)
+    \;=\; \bigl(P_A((x{+}1)/N) - P_A(x/N)\bigr) - 1
+    \;=\; 1 - 1 \;=\; 0.
+\]
+The junior's entitlement is identical at every plateau point. This
+invariance is exactly as strong as $F$'s integer conservation: it relies
+on $\STeff + \JTeff = \STraw + \JTraw$ holding at wei precision, the two
+outputs not independently rounded --- which the accountant guarantees by
+construction (\cref{sec:overview:waterfall}). Existence does not degrade
+at $f = 1$ either: the $+1$ slack in $x_{\max}$
+(\cref{sec:existence:sign}) makes $E(x_{\max}) \leq -1 < 0$ whatever the
+gain, so the bracket still straddles a crossing. Strict uniqueness needs
+$f < 1$; safety needs only the clamp.
+\end{remark}
 
 \subsection{Bracketing: the endpoints straddle the root}
 \label{sec:existence:sign}
@@ -174,3 +208,12 @@ The proof never differentiates $F$, so it survives the
 waterfall's kinks, and never inverts a pool invariant, so it transfers
 unchanged across pool types: only the demand $D$ that the clamp caps is
 pool-specific.
+
+\paragraph{Out of scope.}
+The solve fixes a manipulation-bounded rate; it does not monitor the
+live pool's \emph{composition}. As senior shares accumulate and quote
+drains, the published mark stays correct --- it reads the frozen curve,
+not live balances --- but tracking that drift is a separate operational
+concern. So is Royco's coverage and correlation parameter, a distinct
+quantity from the pool's upper price bound $\beta$
+(\cref{tbl:notation-math}); neither is addressed by the fixed point.
