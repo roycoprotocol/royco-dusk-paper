@@ -1,8 +1,8 @@
 \section{The on-chain solver}
 \label{sec:solver}
 
-\Cref{thm:main} gives a unique root in a bracket whose endpoints straddle
-it. This section runs the solver: integer bisection, in bounded gas. The
+\Cref{thm:main} gives a unique largest root $x^\star$ in a bracket whose
+endpoints straddle the sign change. This section runs the solver: integer bisection, in bounded gas. The
 conditions that make the theorem apply on-chain are stated as explicit
 obligations.
 
@@ -12,9 +12,13 @@ obligations.
 The solver bisects $E$ on $\mathcal{B}$ at integer (WAD) precision. Each
 step halves the bracket and keeps the half whose endpoints still straddle
 the sign change. The bracket holds $\lvert\mathcal{B}\rvert = x_{\max}+1$
-integers, so after $K = \lceil \log_2(\lvert\mathcal{B}\rvert) \rceil$
-steps it has collapsed to a single integer $x^\star$, the boundary with
-$E(x^\star) \geq 0 > E(x^\star + 1)$. The published rate is
+integers, so $\lceil \log_2(\lvert\mathcal{B}\rvert) \rceil$ steps
+collapse it to a single integer $x^\star$, the boundary with
+$E(x^\star) \geq 0 > E(x^\star + 1)$. The deployed iteration count $K$
+is hardcoded per market as an upper bound on this count over every
+reachable bracket ($2^K \geq x_{\max} + 1$, sized from the maximum
+representable $x_{\max}$), so the collapse completes within $K$ steps
+on every solve. The published rate is
 $y^\star = x^\star / N$, rounded toward the senior tranche.
 
 Bisection, not Newton, for three reasons. $F$ is non-smooth, its slope
@@ -23,23 +27,23 @@ method has no derivative to follow, whereas bisection needs only that
 $E$ be non-increasing. The iteration count $K$ is fixed at deploy time,
 so gas is constant with no data-dependent exit. And the loop is a short
 sweep over already-audited valuation code, with no invariant inversion
-and a unique root.
+and a unique predicate boundary.
 
 \subsection{The search bracket and the expressible range}
 \label{sec:solver:bracket}
 
 The solver uses the \emph{conservation bracket} $\mathcal{B}$ of
-\cref{thm:main} as its search domain. Its endpoints straddle the root by
-construction, so the search always brackets a unique answer. Each probe
+\cref{thm:main} as its search domain. Its endpoints bracket $x^\star$ by
+construction, so the search always returns it. Each probe
 evaluates the frozen-$L$ valuation in closed form, not the pool's
 invariant solver, so no probe re-triggers the E-CLP domain check. That
 check runs once, when $L$ is computed at solve start from the live
 balances.
 
-The root is the economically correct rate, but the deployed pool can only
+The largest root $x^\star$ is the economically correct answer, but the deployed pool can only
 \emph{quote} rates inside its price band. Write $\alpha$ and $\beta$ for
 the lower and upper bounds on the senior rate $y = x/N$ \emph{after} the
-mapping below; the expressible range is then
+mapping below. The expressible range is then
 \begin{equation}
   x \;\in\; [N\alpha,\ N\beta].
 \end{equation}
@@ -48,11 +52,13 @@ These bounds are per-solve. The pool's configured band constrains the
 $y_0$, and its orientation depends on the token sort:
 \begin{itemize}
   \item if the senior share is token0 (price quoted as quote-per-senior),
-    the senior-rate bounds are the configured bounds directly;
+    the senior-rate bounds are the configured bounds directly.
   \item if the senior share is token1 (price quoted as senior-per-quote),
     they are the reciprocals of the configured bounds, swapped, then
-    recentered at $y_0$; at rates near $1$ this reduces to the
-    $[N/\beta,\, N/\alpha]$ form of earlier materials.
+    recentered at $y_0$. At rates near $1$ this reduces to the
+    $[N/\beta,\, N/\alpha]$ form of earlier materials. The exact
+    rate-scaling factor in this mapping is pending verification against
+    the deployed pool's convention.
 \end{itemize}
 % TODO(eclp-scaling): confirm the exact y0 rate-scaling factor in the
 % token1 reciprocal mapping against the deployed Gyro E-CLP convention.
@@ -61,10 +67,10 @@ $y_0$, and its orientation depends on the token sort:
 % but the closed form must be verified against the pool's price
 % convention before publication. Do not assert a bare formula until then.
 After solving,
-the kernel checks $x^\star \in [N\alpha, N\beta]$. If the root
+the kernel checks $x^\star \in [N\alpha, N\beta]$. If $x^\star$
 falls outside, the rate is real but unquotable: the sync reverts rather than clipping to a band edge and
 publishing a rate the pool cannot honour. This is the only
-market-condition revert in the solve, and it is a genuine economic
+market-condition revert after the curve is frozen, and it is a genuine economic
 signal (a senior loss larger than the pool's band can represent), not a
 solver fragility.
 
@@ -90,30 +96,34 @@ cheap and is listed as an obligation in \cref{sec:solver:obligations}.
     market creation, and applies no virtual-share offset in its
     conversion (at zero supply it converts one-to-one), so its supply can
     fall back to zero. A Dusk market must therefore pin $N \geq 1$ for the
-    life of the market by construction --- for instance a non-redeemable
-    minimum senior position seeded at creation, or a virtual-share offset
-    in the senior conversion --- so the division is always defined. The
+    life of the market by construction, for instance a non-redeemable
+    minimum senior position seeded at creation or a virtual-share offset
+    in the senior conversion, so the division is always defined. The
     same floor is what discharges the $N \geq 1$ hypothesis of
     \cref{thm:main}.
   \item[Total $E$.] Every probe returns a value rather than reverting.
-    $E$ has two parts. $P_A$ maps every $x \in \mathcal{B}$ to a senior
-    balance inside the E-CLP's computable domain
-    (\S\ref{sec:solver:bracket}), so it never reverts. $F$ reverts only
-    on a checkpoint that violates NAV conservation, and every checkpoint
-    the accountant commits conserves by construction
-    (\cref{sec:overview:waterfall}). So on the reachable state space $E$
+    $E$ has two parts. $P_A$ is the closed-form frozen-curve valuation,
+    total on $\mathcal{B}$ by construction: below the band it is the
+    all-senior line, above it the constant $V_{\max}$, and the E-CLP
+    domain check runs only once, at $L$-computation
+    (\S\ref{sec:solver:bracket}). $F$ reverts only on a checkpoint that
+    violates NAV conservation, and every stored checkpoint, the genesis
+    checkpoint included, conserves by construction
+    (\cref{sec:overview:waterfall}). Its one external read, the
+    yield-model view, must be a non-reverting view function (an
+    obligation below). So on the reachable state space $E$
     is defined at every probe in $\mathcal{B}$.
 \end{description}
 
 Under these three invariants, the solve terminates in exactly $K$ steps
-and returns the unique root. The only remaining reverts are external to
+and returns the largest root $x^\star$. The only remaining reverts are external to
 the solver: a paused market, a stale or reverting price oracle, or the
 surrounding pool operation hitting its own Balancer limits. None of these
 is a failure of the solve, and in each case the cached rate is left
 untouched. Two guarantees follow, and only these two: the failed
 operation reverts before it can \emph{consume} a stale rate, and a
 failed sync never \emph{overwrites} the cache. Ordinary view reads
-(\code{getRate}) still return the last published rate --- staleness is
+(\code{getRate}) still return the last published rate: staleness is
 prevented from propagating through an operation, not from being read.
 
 \subsection{Iteration count and rounding}
@@ -122,12 +132,14 @@ prevented from propagating through an operation, not from being read.
 Two policy choices fix the solver's behaviour:
 \begin{description}
   \item[Iteration count] is the $K$ of \cref{sec:solver:bisection},
-    hardcoded per market. Each step of $E$ lies in $\{-1, 0\}$
-    (\cref{sec:existence:mono}), so $K$ halvings collapse the bracket to
-    the single integer boundary $x^\star$. No residual or
-    iteration-count check is needed.
-  \item[Rounding] sends the final $x^\star$, and the published
-    $y^\star = x^\star/N$, toward the senior tranche. Together with the
+    hardcoded per market to cover the largest reachable bracket,
+    $2^K \geq x_{\max} + 1$. Each step of $E$ lies in $\{-1, 0\}$
+    (\cref{sec:existence:mono}), so $K$ halvings collapse every
+    reachable bracket to the single integer boundary $x^\star$. No
+    residual or iteration-count check is needed.
+  \item[Rounding] sends the published $y^\star = x^\star/N$ toward the
+    senior tranche ($x^\star$ itself is an exact integer,
+    \cref{sec:existence:mono}). Together with the
     floor inside $P_A$ (\cref{eq:PA}) and the round-down of the
     invariant, every rounding step favours the protected tranche.
 \end{description}
@@ -158,10 +170,24 @@ the solve converge, the third keeps every step conservative.
     (the split is unique when demand is monotone, as for the Gyro
     E-CLP). Capping the share count inside the point value,
     $b_q + y\min(D,N)$, is a different function that is not $N$-Lipschitz
-    and breaks monotonicity.
+    and can break monotonicity.
   \item[Frozen inputs, live supply, total $E$.] As in
     \cref{sec:solver:convergence}: read once, $N \geq 1$, conserving
     checkpoint.
+  \item[Total probes.] The closed-form valuation is defined for every
+    $x \in \mathcal{B}$, including the band extensions below $\alpha$
+    (all senior) and above $\beta$ (all quote), and the yield-model view
+    is a non-reverting view function. $P_A$ is evaluated at full
+    precision in $x$, never through a quantized intermediate rate, so a
+    unit step of $x$ moves $f\widehat{V}$ by at most $f$, the bound
+    Stage 1 of \cref{sec:existence:mono} assumes. A quantized rate
+    batches many $x$-steps into one jump of the mark and breaks the
+    step bound.
+  \item[Non-negative mark.] $\STraw \geq 0$, the hypothesis
+    \cref{thm:main} consumes at the lower endpoint
+    (\cref{sec:existence:sign}). A raw NAV marks deposited assets, so a
+    conforming quoter cannot report a negative value. One that can must
+    revert instead of returning it.
   \item[Conservative rounding.] Senior-favouring at every step: the
     invariant down, the valuation floor, and the published rate toward
     senior.
@@ -170,25 +196,26 @@ the solve converge, the third keeps every step conservative.
 \subsection{Rate-freshness obligations}
 \label{sec:solver:freshness}
 
-The solver publishes $y^\star$; the surrounding pool must consume it
-freshly. These obligations are on the hook--kernel--pool wiring rather
-than the solve, and are listed for the implementer.
+The solver publishes $y^\star$, and the surrounding pool must consume
+it freshly. These obligations are on the wiring between hook, kernel,
+and pool rather than on the solve, and are listed for the implementer.
 
 \begin{description}
   \item[Sync coverage.] The hook registers all three before-operation
-    callbacks --- before-swap, before-add, and before-remove --- so
-    every operation triggers a sync.
+    callbacks (before-swap, before-add, and before-remove), so
+    every standard operation triggers a sync. Recovery-mode removes are
+    the one carve-out, listed below.
   \item[Reload ordering.] The kernel syncs inside the matching before
-    branch; Balancer reloads balances and rates for that operation only
+    branch, and Balancer reloads balances and rates for that operation only
     after the hook returns, so the operation executes against the freshly
     published rate. The reload reads the Vault's own internal balances, so
-    the hook must publish through a Vault entrypoint --- a raw token
+    the hook must publish through a Vault entrypoint, since a raw token
     transfer into the pool is not seen by the reload.
   \item[Non-reverting view.] \code{getRate} returns the cached $y^\star$
     and must not revert merely because the rate looks stale.
   \item[Failure semantics.] A failed sync reverts the operation and does
-    not overwrite the cache; ordinary view reads still return the last
-    published rate (\cref{sec:solver:convergence}).
+    not overwrite the cache, and ordinary view reads still return the
+    last published rate (\cref{sec:solver:convergence}).
   \item[Recovery mode.] Recovery-mode removes are a separate path, not
     bound by this contract.
 \end{description}

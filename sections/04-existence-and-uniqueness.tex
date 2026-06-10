@@ -1,15 +1,15 @@
-\section{Existence and uniqueness of the solved rate}
+\section{Existence and unique selection of the solved rate}
 \label{sec:existence}
 
 This section proves the two facts from \cref{sec:setup:roadmap}: $E$ is
 non-increasing (Monotonicity), and its sign changes across a search range
 whose endpoints we can write down (Bracketing). Together they give a unique
-self-consistent rate that bisection finds deterministically.
+largest self-consistent rate, which bisection finds deterministically.
 
-\begin{theorem}[the solved rate exists and is unique]
+\begin{theorem}[the solved rate exists and is uniquely selected]
 \label{thm:main}
-Fix $\STraw$, the checkpoint, the supply $N \geq 1$, and the frozen
-invariant $L$ at the start of a sync. On the bracket
+Fix $\STraw \geq 0$, the checkpoint, the supply $N \geq 1$, the junior
+share $f \leq 1$, and the frozen invariant $L$ at the start of a sync. On the bracket
 \[
   \mathcal{B} \;=\; \bigl[\,0,\ x_{\max}\,\bigr],
   \qquad
@@ -18,10 +18,11 @@ invariant $L$ at the start of a sync. On the bracket
 where $V_{\max} = \sup_y V(y)$ is the pool value at the all-quote corner
 (the senior shares all sold), the integer error function
 $E(x) = F(P_A(x/N)) - x$ is
-non-increasing \textup{(Monotonicity)} and satisfies $E(0) \geq 0$ and
+non-increasing with steps in $\{-1, 0\}$ \textup{(Monotonicity)} and
+satisfies $E(0) \geq 0$ and
 $E(x_{\max}) < 0$ \textup{(Bracketing)}. Hence the integers where $E \geq 0$
 form an initial segment $[0, x^\star]$ with a unique right endpoint $x^\star$, the
-self-consistent senior NAV, and bisection on the predicate
+largest self-consistent senior NAV, and bisection on the predicate
 $E(x) \geq 0$ finds it.
 \end{theorem}
 
@@ -38,8 +39,8 @@ one per step. We bound each stage in turn.
 
 \paragraph{Stage 1: $f\widehat{V}$ moves by at most $1$ per step, so $P_A$ moves by $0$ or $1$.}
 Fix the invariant $L$ at the pre-solve cached rate, as
-\cref{sec:setup:PA} requires. The conservative pool value at rate $y$ is
-the quote it holds plus its senior shares marked at $y$,
+\cref{sec:setup:PA} requires. The fair pool value at rate $y$ on the
+frozen curve is the quote it holds plus its senior shares marked at $y$,
 \[
   V(y) \;=\; b_q(y) \;+\; y\,D(y),
 \]
@@ -56,7 +57,7 @@ the rebalancing terms cancel:
 This is the envelope theorem: the first-order effect of the rebalancing
 variable vanishes at the fair point, leaving the direct term. The
 cancellation holds on the open band $(\alpha, \beta)$. Below it the pool
-is all senior and $V(y) = y\,D(\alpha)$ rises linearly; above it the
+is all senior and $V(y) = y\,D(\alpha)$ rises linearly. Above it the
 pool is all quote and $V$ is constant at $V_{\max}$. Both pieces are
 non-decreasing and join the band continuously, so $V$ is non-decreasing
 throughout.
@@ -116,10 +117,11 @@ $0 \leq F(j) - F(j') \leq j - j'$ for $j > j'$.
 
 \begin{proof}
 $F$ reaches $\STeff$ through two stages
-(\cref{sec:overview:waterfall}), each with non-negative coefficients in
-$[0,1]$: attribution splits the raw delta by a claim fraction
+(\cref{sec:overview:waterfall}), each with non-negative coefficients
+$\in [0,1]$: attribution splits the raw delta by a claim fraction
 $a \in [0,1]$ fixed at the checkpoint (each tranche's claim on a leg is
-at most that leg's raw NAV, by conservation, so $a \leq 1$), and
+at most that leg's raw NAV, by conservation and non-negative effective
+NAVs, so $a \leq 1$), and
 settlement routes the result
 through chains of $\min$, $\max$, addition and subtraction (slopes
 $\{0,1\}$) and a yield split (fractions $w$, $1-w$ with $w$ capped).
@@ -129,27 +131,39 @@ slopes sum to exactly $1$, and since both are non-negative each lies in
 $[0,1]$. Thus $F$ is non-decreasing and 1-Lipschitz.
 \end{proof}
 
-\begin{remark}[Uniqueness and the loop gain at $f = 1$]
+\begin{remark}[The zero plateau and the loop gain]
 \label{rem:plateau}
 The clamp fixes the loop gain at $g = f \leq 1$
 (\cref{sec:existence:mono}), which makes $E$ non-increasing but permits
-it to be flat; the two regimes part at the boundary. When $f < 1$
-strictly, $E$ loses a full wei of altitude every $1/(1-f)$ steps on
-average, so the root is unique --- in real arithmetic, and within a wei
-of it on the lattice. When $f = 1$ the return $F(P_A(x/N))$ can track
-$x$ exactly, and the zero set $\{x : E(x) = 0\}$ widens into a
-contiguous integer block: a \emph{plateau} of self-consistent NAVs in
-place of a single root. Strict uniqueness therefore carries the
-hypothesis $f < 1$, which the clamp alone does not supply.
+it to be flat. Flatness can occur at zero whenever a floor step of $P_A$
+passes through an $F$-branch of slope one, so the zero set
+$\{x : E(x) = 0\}$ is a contiguous integer block at any gain, a
+\emph{plateau} of self-consistent NAVs whenever it holds more than one
+point. The gain bounds its length. Each step inside the block holds $E$
+at $0$, so $F(P_A(x/N))$ rises by exactly $1$, and since $F$ is
+1-Lipschitz and $P_A$ steps by $0$ or $1$ (\cref{sec:existence:mono}),
+$P_A$ rises by exactly $1$ with it. A block of $k+1$ zeros thus forces
+$f\widehat{V}$ across $k$ integer boundaries in $k$ steps of at most $f$
+each. The start lies strictly less than one unit above its floor, so
+crossing $k$ boundaries requires a total rise strictly above $k - 1$,
+while the rise is at most $kf$. Hence $k(1-f) < 1$, and for $f < 1$ the
+block holds at most $\lceil 1/(1-f) \rceil$ integers. At $f = 1$ the bound lapses
+and the plateau is bounded only by the bracket itself. In real
+arithmetic, with the floor in $P_A$ removed and $F$ read along its
+affine branches (\cref{sec:overview:waterfall}), $E$ is continuous and
+falls by at least $1-f$ per unit of $x$, so for every $f < 1$ it has a
+unique real root. Removing the floor raises $E$ by less than one, so
+that root lies in $[x^\star,\ x^\star + 1)$ and the published $x^\star$
+is the nearest lattice point from below. What $f < 1$ buys is a plateau
+bounded independently of the bracket and a real-arithmetic anchor, not a
+singleton zero set. The clamp alone supplies neither.
 
-This costs nothing, because the published value is \emph{defined} to be
+The plateau costs nothing, because the published value is \emph{defined} to be
 the largest plateau integer, the $x^\star$ of \cref{thm:main}, and that
 choice is immaterial to the junior tranche. Across the block $E = 0$
 gives $\STeff = x$, so by NAV conservation
-$\JTeff = \STraw + P_A(x/N) - x$. A unit step inside the block raises
-$F(P_A(x/N))$ by exactly $1$ (the $-x$ term fell by $1$ and $E$ held at
-$0$); as $F$ is $1$-Lipschitz and $P_A$ steps by $0$ or $1$
-(\cref{sec:existence:mono}), this forces $P_A$ up by exactly $1$, whence
+$\JTeff = \STraw + P_A(x/N) - x$. A unit step inside the block forces
+$P_A$ up by exactly $1$ (the step inference above), whence
 \[
   \JTeff(x{+}1) - \JTeff(x)
     \;=\; \bigl(P_A((x{+}1)/N) - P_A(x/N)\bigr) - 1
@@ -158,15 +172,20 @@ $0$); as $F$ is $1$-Lipschitz and $P_A$ steps by $0$ or $1$
 The junior's entitlement is identical at every plateau point. This
 invariance is exactly as strong as $F$'s integer conservation: it relies
 on $\STeff + \JTeff = \STraw + \JTraw$ holding at wei precision, the two
-outputs not independently rounded --- which the accountant guarantees by
-construction (\cref{sec:overview:waterfall}). Existence does not degrade
-at $f = 1$ either: the $+1$ slack in $x_{\max}$
+outputs not independently rounded, which the accountant guarantees by
+construction (\cref{sec:overview:waterfall}). The senior's entitlement
+is not invariant: $\STeff = x$ rises one wei per plateau point, so
+self-consistent publications can differ by up to
+$\lceil 1/(1-f) \rceil - 1$ wei when $f < 1$, and at $f = 1$ only the
+bracket bounds the spread. Publishing the largest is one more tie
+broken for the protected tranche (\cref{sec:setup:PA}). Existence does
+not degrade at $f = 1$: the $+1$ slack in $x_{\max}$
 (\cref{sec:existence:sign}) makes $E(x_{\max}) \leq -1 < 0$ whatever the
-gain, so the bracket still straddles a crossing. Strict uniqueness needs
-$f < 1$; safety needs only the clamp.
+gain, so the bracket still straddles a crossing. A bracket-independent bound on the plateau needs
+$f < 1$. Safety needs only the clamp.
 \end{remark}
 
-\subsection{Bracketing: the endpoints straddle the root}
+\subsection{Bracketing: the endpoints straddle the sign change}
 \label{sec:existence:sign}
 
 We exhibit a range whose endpoints have opposite signs by construction,
@@ -174,7 +193,10 @@ so no runtime sign-change check can fail.
 
 \emph{Lower endpoint.} At $x = 0$, $E(0) = F(P_A(0)) = \STeff \geq 0$,
 since the accountant holds effective NAVs non-negative, whatever the
-junior collateral is worth.
+junior collateral is worth. This consumes $\STraw \geq 0$: at $x = 0$
+the conserved total is $\STraw + P_A(0) = \STraw$, so non-negative
+outputs are consistent with conservation only when it holds (it also
+keeps the bracket well-formed, $x_{\max} \geq 1$).
 
 \emph{Upper endpoint.} $P_A$ is bounded above by $\lfloor f V_{\max}
 \rfloor$. Since $V$ is
@@ -192,16 +214,24 @@ The sign change is a theorem, not a checked precondition.
 \subsection{What the argument assumes about the pool}
 \label{sec:existence:generality}
 
-The proof uses only two structural facts, which an auditor verifies once
-per market:
+The proof rests on structural facts an auditor verifies once per
+market:
 
 \begin{description}
   \item[Waterfall.] $F$ is non-decreasing and 1-Lipschitz in $\JTraw$
-    (\cref{lem:F}). This is a property of the shared accountant and holds
+    (\cref{lem:F}), conserves NAV at wei precision with the two outputs
+    not independently rounded, and returns non-negative effective NAVs.
+    Bracketing consumes the last two directly
+    (\cref{sec:existence:sign}), and \cref{lem:F}'s proof consumes them
+    together with the yield split fraction $\in [0, 1]$. These are
+    properties of the shared accountant and its yield model, and hold
     for any Royco market using the standard waterfall.
   \item[Pool.] The fair value $V$ is non-decreasing in $y$, with
-    $V' = D \geq 0$ by the envelope theorem (\cref{sec:existence:mono}).
-    This holds for the Gyro E-CLP and for any constant-function pool.
+    $V' = D \geq 0$ by the envelope theorem (\cref{sec:existence:mono}),
+    the demand $D$ is non-increasing, and the all-quote corner value
+    $V_{\max}$ is finite. Monotone $V$ holds for any constant-function
+    pool. The finite corner is a property of the E-CLP's bounded band,
+    and it is what makes the bracket endpoint $x_{\max}$ well-defined.
 \end{description}
 
 The proof never differentiates $F$, so it survives the
@@ -210,10 +240,10 @@ unchanged across pool types: only the demand $D$ that the clamp caps is
 pool-specific.
 
 \paragraph{Out of scope.}
-The solve fixes a manipulation-bounded rate; it does not monitor the
+The solve fixes a manipulation-bounded rate. It does not monitor the
 live pool's \emph{composition}. As senior shares accumulate and quote
-drains, the published mark stays correct --- it reads the frozen curve,
-not live balances --- but tracking that drift is a separate operational
-concern. So is Royco's coverage and correlation parameter, a distinct
+drains, the published mark stays correct, since it reads the frozen
+curve rather than live balances, but tracking that drift is a separate
+operational concern. So is Royco's coverage and correlation parameter, a distinct
 quantity from the pool's upper price bound $\beta$
-(\cref{tbl:notation-math}); neither is addressed by the fixed point.
+(\cref{tbl:notation-math}). Neither is addressed by the fixed point.
