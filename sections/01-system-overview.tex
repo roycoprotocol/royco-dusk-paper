@@ -88,13 +88,14 @@ $F$ holds two key properties:
   \item \textbf{NAV conservation:} the inputs sum to the outputs,
     $\STraw + \JTraw = \STeff + \JTeff$, for every checkpoint that
     itself conserves. Every stored checkpoint conserves, because it is
-    itself a prior output of $F$. $F$ redistributes value between the tranches without
+    itself either the conserving genesis checkpoint seeded at market
+    creation or a prior output of $F$. $F$ redistributes value between the tranches without
     creating or destroying it.
-  \item \textbf{Piecewise-affine:} each branch is affine in its inputs,
-    with slope $\in [0, 1]$. Combined with NAV conservation, this makes
-    $F$ continuous, non-decreasing, and 1-Lipschitz in each input. This
-    is the property invoked in the existence proof
-    (\cref{sec:existence}).
+  \item \textbf{Piecewise-affine:} $F$ is built from chains of $\min$,
+    $\max$, and affine pieces with slopes $\in [0, 1]$, so it is
+    continuous and non-decreasing in each input. NAV conservation then
+    makes it 1-Lipschitz in each input. The existence proof invokes the
+    junior direction (\cref{sec:existence}).
 \end{enumerate}
 
 \subsection{Dawn to Dusk}
@@ -154,12 +155,14 @@ Economically, the junior tranche's collateral contains the very senior
 shares its coverage protects. No evaluation order can resolve the cycle:
 the two unknowns, $\JTraw$ and $\STeff$ ($y$ is simply $\STeff$ per
 share), must be determined simultaneously. Under conditions made
-precise in \cref{sec:existence}, exactly one value of
-$\STeff$ satisfies both dependencies at once: price the BPT at its
+precise in \cref{sec:existence}, the values of $\STeff$ that satisfy
+both dependencies at once form a contiguous block: price the BPT at its
 implied rate $y = \STeff/N$, apply $F$, and the same $\STeff$ returns.
-This self-reproducing value is a \emph{fixed point}. \Cref{sec:setup}
-formulates it, \cref{sec:existence} proves it exists and is unique, and
-\cref{sec:solver} finds it on-chain.
+Each such self-reproducing value is a \emph{fixed point}, and the
+published value is the largest. \Cref{sec:setup}
+formulates the equation, \cref{sec:existence} proves the published
+value exists and is uniquely selected, and \cref{sec:solver} finds it
+on-chain.
 
 \subsection{Components of a Dusk market}
 \label{sec:overview:pieces}
@@ -180,7 +183,7 @@ the recursion:
   \item \textbf{Balancer V3 Dusk hook:} Forwards Balancer's before-operation
     callbacks (swap, add and remove liquidity) into the kernel's sync
     entrypoint. Balancer reloads balances and rates after the hook so
-    every operation executes at a fresh senior share rate.
+    every standard operation executes at a fresh senior share rate.
   \item \textbf{Accountant:} Shared with Dawn. During a solve, the
     kernel calls its view-only preview repeatedly to evaluate $F$ at
     candidate rates. After convergence, exactly one call commits the

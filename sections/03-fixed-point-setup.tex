@@ -1,7 +1,7 @@
 \section{The fixed-point formulation}
 \label{sec:setup}
 
-Every pool operation triggers a sync, and every sync must publish one
+Every standard pool operation triggers a sync, and every sync must publish one
 number: the senior share rate $y$. \Cref{sec:overview:dawn-to-dusk}
 showed why this is a fixed point, not an oracle read. This section makes
 it precise: one equation in one unknown, then two facts about one
@@ -16,13 +16,14 @@ self-consistent $x$ is exactly a zero of the \emph{error function}
   E(x) \;=\; F\!\left(P_A(x / N)\right) - x,
 \]
 where $P_A$ values the junior collateral at a candidate rate and $F$ is
-the accountant's sync map. The on-chain solver finds that zero by
-integer bisection, and bisection needs exactly two facts:
+the accountant's sync map. The on-chain solver finds the largest such zero by
+integer bisection, and the argument needs exactly two facts:
 
 \begin{description}
-  \item[(Monotonicity)] $E$ never rises: each step holds or falls. So the
-    values where $E \geq 0$ form an initial segment, the crossing is
-    \emph{unique}, and bisection knows which way to step.
+  \item[(Monotonicity)] $E$ never rises: each step holds or falls by
+    exactly one. So the values where $E \geq 0$ form an initial segment
+    whose right endpoint, the crossing, is \emph{unique} even when
+    several zeros tie along it, and bisection knows which way to step.
   \item[(Bracketing)] $E$ is non-negative at the bottom of the search range
     and negative at the top. This makes the crossing \emph{exist} and
     brackets it.
@@ -45,7 +46,7 @@ checkpoint and returns the effective NAVs:
 \]
 Two properties of $F$ matter downstream (\cref{sec:overview:waterfall}).
 It conserves NAV ($\STraw + \JTraw = \STeff + \JTeff$), and it is
-non-decreasing and 1-Lipschitz in each input (\cref{lem:F}).
+non-decreasing and 1-Lipschitz in $\JTraw$ (\cref{lem:F}).
 Conservation holds by construction: every stored checkpoint is itself a
 prior output of $F$.
 
@@ -66,53 +67,65 @@ gross NAV backs, including any minted for fees.
 \subsection{The BPT valuation $P_A$}
 \label{sec:setup:PA}
 
-The junior tranche owns a fraction $f$ of a
-Gyro E-CLP pool whose two legs are the senior share and a quote asset.
-$P_A(y)$ is the value of that position when the senior share trades at
-rate $y$, marked conservatively so that no manipulation and no rounding
-can ever credit the junior tranche more than it could withdraw.
+The junior tranche owns a fraction $f$ of a Gyro E-CLP pool whose two
+legs are the senior share and a quote asset. $P_A(y)$ answers one
+question: with the senior share priced at a candidate rate $y$, what is
+that stake worth? The stake is the junior's first-loss collateral, so
+the mark must never overstate it: coverage credited against an inflated
+mark is coverage the senior cannot collect. Three ingredients keep the
+mark honest: a curve frozen at solve start, a fair point on that curve,
+and a cap at the total share supply.
 
 \paragraph{The frozen curve.}
-The senior leg is priced by the rate the kernel publishes. At the start of a solve the
-kernel reads the cached rate $y_0$ once and computes the pool invariant
-$L$ from the rate-scaled balances, rounded down in favour of the senior
-tranche. $L$ is then held fixed while the candidate rate $y$ varies.
-Freezing $L$ is what makes $P_A$ a clean function of $y$ alone, which the
-monotonicity proof relies on. The implementation details of the scaling
-and rounding are collected in \cref{sec:solver:obligations}.
+Live pool balances can be pushed around within a block, so the mark
+never reads them directly. At the start of a solve the kernel reads the
+cached rate $y_0$ once and computes the pool invariant $L$ from the
+rate-scaled balances, rounded down in favour of the senior tranche. $L$
+is then held fixed while the candidate rate $y$ varies, which makes
+$P_A$ a function of $y$ alone. The monotonicity proof relies on exactly
+this. The scaling and rounding details are collected in
+\cref{sec:solver:obligations}.
 
 \paragraph{The fair point.}
-Given $L$, the conservative value at candidate rate $y$ is the pool's
-value at its \emph{fair point}: the point on the frozen curve whose
-\emph{marginal price} (its local slope, the spot rate for an
-infinitesimal trade) equals $y$. Write this value $V(y)$ and write
+Given $L$, the pool is valued at the one point on the frozen curve
+consistent with the candidate price: the point whose \emph{marginal
+price} (its local slope, the spot rate for an infinitesimal trade)
+equals $y$. Valuing any other point would mark the pool as if it were
+quoting a price the candidate rate contradicts. Write $V(y)$ for the
+pool's fair value at that point, and
 \[
   D(y) \;=\; V'(y),
 \]
 the pool's \emph{demand} for senior shares at price $y$, that is, the
-senior reserve the fair point holds. Two geometric facts about the
-E-CLP, proved in \cref{sec:existence:mono}, are all we need: $V$ is
-non-decreasing, with $V'(y) = D(y) \geq 0$ (a higher senior price raises
-the value of the senior shares the pool holds), and the demand $D(y)$ is
-finite at every rate the curve can express.
+senior reserve the fair point holds. The proofs need one geometric
+fact, the envelope theorem of \cref{sec:existence:mono}: $V$ is
+non-decreasing, with $V'(y) = D(y) \geq 0$ (a higher senior price
+raises the value of the senior shares the pool holds). The structural
+facts an auditor confirms per market are collected in
+\cref{sec:existence:generality}.
 
 \paragraph{The clamp.}
-Far below the operating rate the curve's demand $D(y)$ grows without
-bound, but the pool can hold at most the total supply $N$ (even if every
-senior holder sold into it). The true demand cannot exceed $N$, so we
-cap it there:
+At low rates the frozen curve can demand more senior shares than
+exist: the quote leg would notionally absorb more than the total
+supply $N$, even if every holder sold into the pool. Coverage resting
+on shares beyond the $N$ that exist is phantom coverage, so the demand
+is capped at the supply:
 \[
   \Dc(y) \;=\; \min\bigl(D(y),\ N\bigr),
   \qquad
   \widehat{V}(y) \;=\; \int_0^y \Dc(u)\,du.
 \]
-By definition $\widehat{V}(0) = 0$, and $V(0) \geq 0$ since a reserve
-is non-negative. With $\Dc \leq D = V'$ this gives
-$0 \leq \widehat{V} \leq V$ everywhere: the cap only lowers the mark and
-preserves conservatism. At any healthy
-rate the live demand is far below $N$ and the cap is inactive. Its
-purpose is to bound demand by the supply, which \cref{sec:existence}
-turns into unconditional monotonicity.
+By definition $\widehat{V}(0) = 0$, and with $\Dc \leq D = V'$ this
+gives $0 \leq \widehat{V} \leq V$ everywhere: the cap only ever lowers
+the mark. The two values differ by exactly the phantom area,
+\[
+  V(y) - \widehat{V}(y)
+    \;=\; V(0) \;+\; \int_0^y \bigl(D(u) - N\bigr)^{+}\,du.
+\]
+For the E-CLP the all-senior corner holds no quote, so $V(0) = 0$ and
+the gap vanishes at any rate below which demand never exceeds $N$. At
+healthy rates the cap is therefore inactive and $\widehat{V} = V$
+there. Its bite is reserved for the danger zone.
 
 \paragraph{The valuation.}
 The junior tranche's pro-rata claim, rounded down in favour of the
@@ -121,50 +134,35 @@ senior tranche, is the \emph{conservative BPT valuation}:
   P_A(y) \;=\; \bigl\lfloor\, f \cdot \widehat{V}(y) \,\bigr\rfloor.
   \label{eq:PA}
 \end{equation}
-By the geometric facts and the clamp, $P_A$ is non-decreasing in $y$ and
-Lipschitz with constant $f N$ (\cref{sec:existence:mono}). Within a
-single solve $V$ depends only on $L$ and $y$, not on the live pool
-composition. A fee-free swap conserves the pool's true invariant, and
-the $L$ the solver consumes is a round-down underestimate of it
-recomputed from live balances, so $L \leq L_{\mathrm{true}}$ for every
-reachable composition. A swap (or a donation, which Balancer V3 ignores
-since it accounts internally) can therefore move the mark only within
-the round-down band, and never above the true fair value. The mark is
-manipulation-bounded, not immovable.
+By the geometric fact and the clamp, $f\widehat{V}$ is non-decreasing
+in $y$ and Lipschitz with constant $f N$, so the floor moves $P_A$ by
+$0$ or $1$ per unit step of $x$ (\cref{sec:existence:mono}).
 
-\paragraph{A capped lower bound, stated plainly.}
-$P_A$ is deliberately a lower bound on the junior's realisable worth,
-not the pool's live fair value. The two differ by exactly the value the
-cap discards,
-\[
-  V(y) - \widehat{V}(y)
-    \;=\; V(0) \;+\; \int_0^y \bigl(D(u) - N\bigr)^{+}\,du,
-\]
-the phantom coverage resting on senior shares beyond the $N$ that exist,
-plus any reserve held at rate $0$. The gap is strict precisely when the
-clamp binds somewhere below $y$ (or $V(0) > 0$); in a pool whose demand
-never reaches $N$ on $[0, y]$ it vanishes and $\widehat{V} = V$ there.
-The under-marking is thus targeted: in the healthy band the cap is
-inactive and $\widehat{V}' = D$ matches fair value at the \emph{margin},
-while the \emph{level} stays a lower bound because the low-rate phantom
-area was already excluded.
+\paragraph{Why trading cannot lift the mark.}
+Within a solve, $V$ depends only on $L$ and $y$, never on the live
+pool composition. A fee-free swap conserves the pool's true invariant,
+and the $L$ the solver consumes is a round-down underestimate of it,
+so $L \leq L_{\mathrm{true}}$ for every reachable composition. A swap
+(or a donation, which Balancer V3 ignores since it accounts
+internally) can therefore move the mark only within the round-down
+band, never above the true fair value.
 
-This is one of three independent senses the word \emph{conservative}
-carries in this document; a valuation can have any one without the
-others.
+In summary, \emph{conservative} carries three independent senses in
+this document, and the valuation is built to have all three.
 \begin{description}
   \item[Manipulation-bounded.] The mark reads the frozen invariant $L$
     and the fair point, not live pool balances, so trading moves it only
     within the round-down band above.
-  \item[Senior-favouring.] Every rounding step --- the floor in $P_A$,
-    the round-down of $L$, the published rate toward senior --- breaks
+  \item[Senior-favouring.] Every rounding step (the floor in $P_A$,
+    the round-down of $L$, the published rate toward senior) breaks
     ties for the protected tranche.
-  \item[Capped lower bound.] The clamp $\min(D, N)$ under-marks in the
-    danger zone, by exactly the gap above.
+  \item[Capped lower bound.] The clamp $\min(D, N)$ under-marks by
+    exactly the phantom area above, precisely where demand exceeds the
+    shares that exist.
 \end{description}
-The published senior rate $y^\star$ is built on this capped lower-bound
-valuation by design. \Cref{sec:existence} turns the same cap into
-unconditional monotonicity.
+The published senior rate $y^\star$ is built on this capped
+lower-bound valuation by design. \Cref{sec:existence} turns the same
+cap into unconditional monotonicity.
 
 \subsection{The fixed-point equation}
 \label{sec:setup:circularity}
@@ -177,6 +175,7 @@ $\STeff = F(\JTraw)$, so the senior NAV must reproduce itself:
 \end{equation}
 A solution is a zero of the error function $E$
 (\cref{sec:setup:roadmap}), and the published rate is
-$y^\star = x^\star / N$. \Cref{sec:existence} proves $E$ has exactly one
-zero (Monotonicity) inside a range whose endpoints straddle it
+$y^\star = x^\star / N$. \Cref{sec:existence} proves the zeros of $E$ form one
+contiguous block whose largest element is the published root $x^\star$
+(Monotonicity), inside a range across which $E$ changes sign
 (Bracketing).
