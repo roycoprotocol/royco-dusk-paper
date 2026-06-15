@@ -43,6 +43,7 @@ $10^6$ for USDC).
   $F$                & Sync map, $(\STraw,\ \JTraw;\ \text{checkpoint}) \mapsto (\STeff,\ \JTeff)$      & function \\
   checkpoint         & Previous sync's raw NAVs, effective NAVs, outstanding ILs, market state, and yield-accrual bookkeeping & --- \\
   $P_A$              & Conservative BPT valuation, $\JTraw = P_A(y)$                                    & function \\
+  $G$                & Return map (loop output), $G(x) = F(P_A(x/N))$, so $E(x) = G(x) - x$            & function \\
   $E$                & Error function, $E(x) = F(P_A(x/N)) - x$, the bisection target                  & function \\
   $g$                & Loop gain (round-trip amplification of $x$), $g = f \leq 1$ by the clamp at $N$  & dimensionless \\
   \midrule

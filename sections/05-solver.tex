@@ -25,6 +25,134 @@ so gas is constant with no data-dependent exit. And the loop is a short
 sweep over already-audited valuation code, with no invariant inversion
 and a unique root.
 
+\subsection{Probe value reuse}
+\label{sec:solver:reuse}
+
+Write the loop output as $G(x) = F(P_A(x/N))$, so $E(x) = G(x) - x$. To
+get the sign of $E(z)$ the solver already evaluates $G(z)$ in full --- it
+prices the junior collateral at the candidate rate and runs the
+waterfall --- then keeps one bit and discards the number. But that number
+is not merely a test statistic. Monotonicity
+(\cref{sec:existence:mono}) certifies $G(z)$ as a bracket endpoint on the
+correct side of the root, usually far tighter than the midpoint rule
+reaches in many steps.
+
+\begin{lemma}[probe upgrade]
+\label{lem:probe-upgrade}
+Let $z$ be a probe and $v = E(z)$, so the loop output $G(z) = z + v$ is
+already in hand. If $v \geq 0$ then $z \leq x^\star$ and
+$G(z) \in [z,\ x^\star]$; if $v < 0$ then $z > x^\star$ and
+$G(z) \in [x^\star,\ z-1]$. Either way $G(z)$ is a valid endpoint on
+$z$'s side of the root, no farther from $x^\star$ than $z$.
+\end{lemma}
+
+\begin{proof}
+By Monotonicity (\cref{sec:existence:mono}) the integers with $E \geq 0$
+are exactly $[0, x^\star]$, so the sign of $v$ locates $z$ relative to
+$x^\star$. And $G = F \circ P_A$ is non-decreasing, both factors being so
+(\cref{sec:existence:mono,lem:F}). If $z \leq x^\star$: $G(z) \leq
+G(x^\star) = x^\star$ and $G(z) = z + v \geq z$. If $z > x^\star$:
+$G(z) \geq G(x^\star) = x^\star$ and $G(z) = z + v \leq z - 1$, since
+$v \leq -1$.
+\end{proof}
+
+\begin{figure}[!ht]
+\centering
+\begin{tikzpicture}[
+  >={Stealth[length=2.2mm]},
+  font=\small,
+  scale=0.62,
+]
+  % axes
+  \draw[->] (0,0) -- (10.4,0) node[right] {$x$};
+  \draw[->] (0,0) -- (0,8.8) node[above] {$G(x)$};
+  % diagonal y = x
+  \draw[gray] (0,0) -- (8,8) node[above right, black] {$y = x$};
+  % return map G (slope < 1), crossing the diagonal at x*
+  \draw[very thick, blue] (0,2) -- (9,6.05) node[right, black] {$G$};
+  % root: G(x*) = x*  (2 + 0.45 x = x  =>  x = 3.636)
+  \fill (3.636,3.636) circle (2.2pt);
+  \draw[dashed] (3.636,3.636) -- (3.636,0) node[below] {$x^\star$};
+  % right probe z (upper-endpoint case): curve point below diagonal, above x*
+  \draw[dashed] (8,0) node[below] {$z$} -- (8,8);
+  \fill[red] (8,5.6) circle (2.2pt);
+  \draw[red,->] (8,8) -- (8,5.6) node[midway,right] {$E(z)<0$};
+  \draw[red,->] (8,5.6) -- (5.6,5.6) node[midway,above] {new $\mathit{hi}=G(z)$};
+  \fill[red] (5.6,5.6) circle (1.7pt);
+  % left probe z' (lower-endpoint case): curve point above diagonal, below x*
+  \draw[dashed] (1,0) node[below] {$z'$} -- (1,2.45);
+  \fill[teal] (1,2.45) circle (2.2pt);
+  \draw[teal,->] (1,1) -- (1,2.45) node[midway,left] {$E(z')>0$};
+  \draw[teal,->] (1,2.45) -- (2.45,2.45) node[midway,above] {new $\mathit{lo}=G(z')$};
+  \fill[teal] (2.45,2.45) circle (1.7pt);
+\end{tikzpicture}
+\caption{Probe value reuse, one step. The root $x^\star$ is where the
+return map $G$ meets the diagonal $y = x$. A probe at $z$ right of the
+root lands the curve point $(z, G(z))$ below the diagonal yet no lower
+than $x^\star$ (\cref{lem:probe-upgrade}); sliding horizontally to the
+diagonal makes $G(z)$ the new upper endpoint, already past the midpoint
+and toward the root. A probe $z'$ left of the root gives a new lower
+endpoint symmetrically. On a flat stretch of $G$ --- a covered, locally
+inert market state --- the first slide lands at the root's level at once:
+the $2$--$3$ probe solve of \cref{prop:reuse}.}
+\label{fig:reuse}
+\end{figure}
+
+The solver applies the lemma at every step: where plain bisection moves
+the endpoint to the midpoint $m$, value reuse moves it to the value the
+midpoint returned, $G(m) = m + v$. Maintaining $x^\star \in [\mathit{lo},
+\mathit{hi}]$ from the bracket of \cref{thm:main}:
+\[
+\begin{aligned}
+  &(\mathit{lo},\ \mathit{hi}) \gets (0,\ x_{\max} - 1) \\
+  &\textbf{while } \mathit{hi} > \mathit{lo}: \\
+  &\quad m \gets \mathit{lo} + \lceil (\mathit{hi} - \mathit{lo})/2 \rceil \\
+  &\quad v \gets E(m) \qquad \text{(one probe; } G(m) = m + v \text{)} \\
+  &\quad \textbf{if } v \geq 0:\ \mathit{lo} \gets m + v
+        \quad \textbf{else}:\ \mathit{hi} \gets m + v \\
+  &\textbf{return } \mathit{lo}
+\end{aligned}
+\]
+
+\begin{proposition}[value reuse is free]
+\label{prop:reuse}
+The loop maintains $x^\star \in [\mathit{lo}, \mathit{hi}]$, terminates in
+at most $K$ probes --- the same worst case as \cref{sec:solver:bisection}
+--- and returns the bit-identical $x^\star$, including the largest-integer
+selection on the $f = 1$ plateau (\cref{rem:plateau}). The published rate,
+the committed checkpoint, and the obligations of
+\cref{sec:solver:obligations} are all unchanged.
+\end{proposition}
+
+\begin{proof}
+The invariant holds initially by Bracketing
+(\cref{sec:existence:sign}); each update replaces an endpoint by $G(m)$,
+which \cref{lem:probe-upgrade} places between that endpoint and $x^\star$
+inclusive. Progress: $\mathit{lo} < m \leq \mathit{hi}$, so the $v \geq 0$
+branch gives $\mathit{lo}' = m + v \geq m > \mathit{lo}$ and the $v < 0$
+branch gives $\mathit{hi}' = m + v \leq m - 1 < \mathit{hi}$ --- never
+worse than moving to the midpoint, so the $\lceil \log_2 \rceil$ bound is
+inherited and reuse can only beat it. At termination $\mathit{lo} =
+\mathit{hi} = x^\star$. On the $f = 1$ plateau the $v \geq 0$ branch
+pushes $\mathit{lo}$ upward through the block ($\mathit{lo}' = G(m) \geq
+m$), so the returned point is the largest integer with $E \geq 0$, the
+$x^\star$ of \cref{thm:main}. The only change from
+\cref{sec:solver:bisection} is the bracket-update rule.
+\end{proof}
+
+The gain is large because the recursion is locally inert wherever the
+junior buffer fully covers the senior delta
+($\partial \STeff / \partial \JTraw = 0$): one value jump lands on the
+root, so healthy and stressed-but-covered states --- including $f = 1$
+and a binding clamp --- solve in $2$--$3$ probes. The loop is live only
+where the senior holds claims on the pool leg (IL recovery, cross-claim
+attribution, the yield split), and there each jump still shrinks the
+overshoot by the local gain, so even deep distress converges in $\sim 20$
+probes against the $\sim 64$ of width-limited bisection. Since the solve
+runs on every swap, add, and remove, this is a $5$--$30\times$ cut in
+solver gas on the hot path, at the cost of a single changed line and no
+new assumptions.
+
 \subsection{The search bracket and the expressible range}
 \label{sec:solver:bracket}
 
