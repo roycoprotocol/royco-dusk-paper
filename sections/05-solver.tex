@@ -313,14 +313,23 @@ $V_{\max} - \widehat{V}(\beta)$.}
 \end{figure}
 
 \paragraph{Closed form on the E-CLP.}
-Each quantity in \cref{eq:vhat-beta} is closed-form on the frozen curve.
+Every quantity in \cref{eq:vhat-beta} is a closed-form evaluation on the
+frozen curve, and the rate $y_N$ need never be materialized.
 $V_{\max} = V(\beta)$ is the rate-scaled quote reserve at the all-quote
-corner --- the curve's maximal balance for the quote leg at the frozen
-invariant $L$. The threshold $y_N$ is the marginal price at which the
-senior real reserve equals $N$, recovered by inverting the
-reserve--price relation, and $b_q(y_N)$ is the conjugate reserve there.
-All three are evaluations on the same frozen curve the probes use
-(\cref{sec:setup:PA}); none re-triggers the pool's domain check.
+corner --- the curve's maximal balance for the quote leg (\code{maxBalances})
+at the frozen invariant $L$ --- and the same corner quantity for the senior
+leg is the $D(\alpha)$ the guard above compares against $N$. The threshold's
+conjugate reserve $b_q(y_N)$ comes straight from the curve's
+reserve-given-reserve map: fixing the senior real reserve at $N$ returns the
+quote reserve at the unique curve point where senior demand meets the supply
+(\code{calcYGivenX} for a senior token0, \code{calcXGivenY} for token1) --- a
+closed-form ellipse inversion, no iteration. The endpoint is then
+$\widehat{V}(\beta) = V_{\max} - b_q(y_N)$; the rate $y_N$ is just the spot
+price at that same point, needed only if the in-band check
+$y_N \in [\alpha, \beta]$ is performed, never for the value. Here $N$ enters
+in the pool's rate-scaled balance units, the senior leg scaled at the frozen
+$y_0$. All evaluations run on the frozen curve the probes use
+(\cref{sec:setup:PA}), so none re-triggers the pool's domain check.
 
 \paragraph{Rounding.}
 $\widehat{V}(\beta)$ is the one quantity rounded \emph{up}. Every other
