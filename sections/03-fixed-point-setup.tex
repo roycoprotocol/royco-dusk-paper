@@ -78,13 +78,31 @@ and a cap at the total share supply.
 
 \paragraph{The frozen curve.}
 Live pool balances can be pushed around within a block, so the mark
-never reads them directly. At the start of a solve the kernel reads the
-cached rate $y_0$ once and computes the pool invariant $L$ from the
-rate-scaled balances, rounded down in favour of the senior tranche. $L$
-is then held fixed while the candidate rate $y$ varies, which makes
-$P_A$ a function of $y$ alone. The monotonicity proof relies on exactly
-this. The scaling and rounding details are collected in
-\cref{sec:solver:obligations}.
+reads them once at solve start and never re-reads them while solving.
+The kernel reads the cached rate $y_0$ at that point and computes the
+pool invariant $L$ from the rate-scaled balances, rounded down in favour
+of the senior tranche. $L$ is then held fixed while the candidate rate
+$y$ varies, which makes $P_A$ a function of $y$ alone. The monotonicity
+proof relies on exactly this. The scaling and rounding details are
+collected in \cref{sec:solver:obligations}.
+
+\paragraph{Two parameterizations.}
+Reading the balances once and freezing them is what resists
+manipulation, and it still leaves open how the candidate rate $y$ enters
+the value. Two designs answer differently. The \emph{frozen curve},
+developed here, fixes the invariant $L$ and lets $y$ enter through the
+price, so the mark slides along one fixed curve. \emph{Rate-scaling},
+used by the reference implementation, fixes the prices and lets $y$
+enter through the senior balance, rebuilding the curve at each candidate
+rate from the frozen balances scaled by $y$. Both read the live balances
+once and freeze them, so manipulation resistance does not distinguish
+them: the per-probe recomputation under rate-scaling works from the
+frozen balances, never from a fresh read. The two are different
+functions of $y$, so three of the results below depend on the choice:
+the value the clamp retains at rate zero, the upper bracket $V_{\max}$,
+and the covered case. Each is stated in the form that holds under both,
+with the frozen curve as the special case the rest of this section
+and \cref{sec:existence} develop.
 
 \paragraph{The fair point.}
 Given $L$, the pool is valued at the one point on the frozen curve
@@ -113,19 +131,27 @@ is capped at the supply:
 \[
   \Dc(y) \;=\; \min\bigl(D(y),\ N\bigr),
   \qquad
-  \widehat{V}(y) \;=\; \int_0^y \Dc(u)\,du.
+  \widehat{V}(y) \;=\; V(0) \;+\; \int_0^y \Dc(u)\,du.
 \]
-By definition $\widehat{V}(0) = 0$, and with $\Dc \leq D = V'$ this
-gives $0 \leq \widehat{V} \leq V$ everywhere: the cap only ever lowers
-the mark. The two values differ by exactly the phantom area,
+The retained $V(0)$ is the pool's value at rate zero: the reserve it
+still holds once the senior leg is marked to nothing. With
+$\Dc \leq D = V'$ this gives $V(0) \leq \widehat{V} \leq V$ everywhere,
+so the cap only ever lowers the mark, never below that rate-zero
+reserve. The two values differ by exactly the phantom area,
 \[
   V(y) - \widehat{V}(y)
-    \;=\; V(0) \;+\; \int_0^y \bigl(D(u) - N\bigr)^{+}\,du.
+    \;=\; \int_0^y \bigl(D(u) - N\bigr)^{+}\,du,
 \]
-For the E-CLP the all-senior corner holds no quote, so $V(0) = 0$ and
-the gap vanishes at any rate below which demand never exceeds $N$. At
-healthy rates the cap is therefore inactive and $\widehat{V} = V$
-there. Its bite is reserved for the danger zone.
+so $\widehat{V}$ discards the phantom and keeps everything else. Under
+the frozen curve the all-senior corner holds no quote, so $V(0) = 0$:
+the retained term drops, $\widehat{V}$ is the bare integral
+$\int_0^y \Dc$, and the gap vanishes at any rate below which demand
+never exceeds $N$. Under rate-scaling, marking the senior leg to zero
+leaves the quote tokens in place, so $V(0)$ is that quote leg and is
+positive; dropping it would under-mark the junior by the whole quote leg
+at every rate, including the healthy range where the cap is inactive. At
+healthy rates the cap is inactive and $\widehat{V} = V$ wherever demand
+stays under $N$; its bite is reserved for the danger zone.
 
 \paragraph{The valuation.}
 The junior tranche's pro-rata claim, rounded down in favour of the

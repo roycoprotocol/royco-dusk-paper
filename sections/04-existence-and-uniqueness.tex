@@ -16,11 +16,14 @@ share $f \leq 1$, and the frozen invariant $L$ at the start of a sync. On the br
   x_{\max} \;=\; \STraw + \lfloor f\,V_{\max}\rfloor + 1,
 \]
 where $V_{\max} = \sup_y V(y)$ is the pool value at the all-quote corner
-(the senior shares all sold), the integer error function
-$E(x) = F(P_A(x/N)) - x$ is
+(the senior shares all sold) under the frozen curve, the integer error
+function $E(x) = F(P_A(x/N)) - x$ is
 non-increasing with steps in $\{-1, 0\}$ \textup{(Monotonicity)} and
 satisfies $E(0) \geq 0$ and
-$E(x_{\max}) < 0$ \textup{(Bracketing)}. Hence the integers where $E \geq 0$
+$E(x_{\max}) < 0$ \textup{(Bracketing)}. More generally any
+rate-independent $x_{\max}$ with $E(x_{\max}) < 0$ brackets the root, and
+\cref{sec:existence:sign} constructs one under both the frozen curve and
+rate-scaling. Hence the integers where $E \geq 0$
 form an initial segment $[0, x^\star]$ with a unique right endpoint $x^\star$, the
 largest self-consistent senior NAV, and bisection on the predicate
 $E(x) \geq 0$ finds it.
@@ -188,28 +191,70 @@ $f < 1$. Safety needs only the clamp.
 \subsection{Bracketing: the endpoints straddle the sign change}
 \label{sec:existence:sign}
 
-We exhibit a range whose endpoints have opposite signs by construction,
-so no runtime sign-change check can fail.
+We exhibit a conservation range whose endpoints have opposite signs by
+construction, so on that range no sign-change check is needed.
 
 \emph{Lower endpoint.} At $x = 0$, $E(0) = F(P_A(0)) = \STeff \geq 0$,
 since the accountant holds effective NAVs non-negative, whatever the
-junior collateral is worth. This consumes $\STraw \geq 0$: at $x = 0$
-the conserved total is $\STraw + P_A(0) = \STraw$, so non-negative
-outputs are consistent with conservation only when it holds (it also
-keeps the bracket well-formed, $x_{\max} \geq 1$).
+junior collateral is worth. This consumes only non-negativity of the
+raw inputs: at $x = 0$ the conserved total is $\STraw + P_A(0)$, both
+terms non-negative, so the accountant's non-negative effective outputs
+keep $E(0) \geq 0$, and $\STraw \geq 0$ keeps the bracket well-formed
+($x_{\max} \geq 1$).
 
-\emph{Upper endpoint.} $P_A$ is bounded above by $\lfloor f V_{\max}
-\rfloor$. Since $V$ is
-non-decreasing, $\widehat V \leq V \leq V_{\max}$ for every candidate
-rate, whichever way the pool sorts its tokens. By NAV conservation
-$\STeff = \STraw + \JTraw - \JTeff \leq \STraw
-+ \JTraw \leq \STraw + \lfloor f V_{\max}\rfloor$ (using $\JTeff \geq
-0$) for every candidate. At
-$x_{\max} = \STraw + \lfloor f V_{\max}\rfloor + 1$ we therefore have
+\emph{Upper endpoint, frozen curve.} $P_A$ is bounded above by
+$\lfloor f V_{\max}\rfloor$. Since $V$ is non-decreasing,
+$\widehat V \leq V \leq V_{\max}$ for every candidate rate, whichever way
+the pool sorts its tokens. By NAV conservation
+$\STeff = \STraw + \JTraw - \JTeff \leq \STraw + \JTraw \leq \STraw +
+\lfloor f V_{\max}\rfloor$ (using $\JTeff \geq 0$) for every candidate.
+At $x_{\max} = \STraw + \lfloor f V_{\max}\rfloor + 1$ we therefore have
 $E(x_{\max}) = \STeff - x_{\max} \leq -1 < 0$.
 
-Both endpoints are computed once, at solve start, from frozen values.
-The sign change is a theorem, not a checked precondition.
+\emph{Upper endpoint, rate-scaling.} Here the curve is rebuilt at each
+candidate rate from the frozen balances scaled by $y$, so $\widehat V$
+climbs past $V_{\max}$ rather than flattening there: the clamp caps its
+slope at $N$, not its value, and $\lfloor f V_{\max}\rfloor$ no longer
+bounds $P_A$. The bracket comes from the waterfall instead, and how it
+does so splits by checkpoint state. For an
+\emph{uncovered} checkpoint the bound is the senior's \emph{entitled
+value}: a higher trial junior NAV first repays the senior's outstanding
+IL one-for-one, and once that IL is cleared and the senior has received
+its own positive raw-NAV movement, further junior value accrues entirely
+to the junior (\cref{sec:overview:waterfall}) and does not raise
+$\STeff$. So $\STeff$ is capped by a rate-independent constant, $\STraw$
+plus the senior's own yield plus the IL outstanding at the checkpoint,
+and $x_{\max}$ is that constant plus one: tight, and valid for every $f$.
+For a \emph{covered} checkpoint that cap does not apply, because the
+senior is drawing coverage from the junior and $\STeff$ keeps rising with
+the trial junior NAV rather than saturating. A bracket still exists. The
+covered-state waterfall response is strictly less than one-for-one as a
+\emph{finite-difference} bound, not a branch slope: a single $c < 1$
+serves the whole covered region, with $\STeff$ rising by at most
+$c\,\Delta$ for every increase $\Delta$ in $\JTraw$ within it, so the
+bound survives the waterfall's kinks. Composed with the clamp's
+finite-difference bound, this gives a sublinear round trip. Over an
+increase of $x$, the real-valued pre-floor mark $f\widehat V$ can rise
+by at most $f x$, and the floor in $P_A$ adds only a bounded rounding
+slack independent of $x$ (\cref{sec:existence:mono}). Therefore
+\[
+  \STeff(x) \;\leq\; \STeff(0) + c f\,x
+\]
+up to that same $x$-independent slack, where $\STeff(0) = F(P_A(0))$ is
+the waterfall output at the zero-rate junior valuation (the lower
+endpoint above). Being independent of $x$, that slack shifts the
+intercept but not the slope, so the finite
+denominator $1 - c f$ still fixes a rate-independent bracket:
+$x_{\max} = \lceil \STeff(0)/(1 - c f)\rceil$ plus the bounded slack, set
+at solve start by $\STeff(0)$, $c$, and $f$. This $x_{\max}$ is an
+existence certificate, computable up front from frozen values. Under
+rate-scaling the covered case loses only the clean \emph{constant} cap,
+not the bracket.
+
+Both endpoints of the conservation bracket are computed once, at solve
+start, from frozen values, so the sign change is a theorem, not a checked
+precondition. This bracket is the existence argument; how the deployed
+solver brackets its search is specified in \cref{sec:solver}.
 
 \subsection{What the argument assumes about the pool}
 \label{sec:existence:generality}
@@ -225,13 +270,24 @@ market:
     (\cref{sec:existence:sign}), and \cref{lem:F}'s proof consumes them
     together with the yield split fraction $\in [0, 1]$. These are
     properties of the shared accountant and its yield model, and hold
-    for any Royco market using the standard waterfall.
+    for any Royco market using the standard waterfall. The covered-case
+    bracket uses one more: that the senior keeps strictly less than all
+    of each junior gain, a single $c < 1$ across the covered region with
+    $\STeff$ rising by at most $c\,\Delta$ for every increase $\Delta$ in
+    $\JTraw$ (a finite-difference bound that survives the waterfall's
+    kinks), which the yield split secures whenever the junior's yield
+    share is positive. The uncovered bracket and \cref{lem:F} need only
+    the $1$-Lipschitz bound.
   \item[Pool.] The fair value $V$ is non-decreasing in $y$, with
     $V' = D \geq 0$ by the envelope theorem (\cref{sec:existence:mono}),
     the demand $D$ is non-increasing, and the all-quote corner value
     $V_{\max}$ is finite. Monotone $V$ holds for any constant-function
-    pool. The finite corner is a property of the E-CLP's bounded band,
-    and it is what makes the bracket endpoint $x_{\max}$ well-defined.
+    pool. The finite corner makes the frozen-curve bracket endpoint
+    $x_{\max} = \STraw + \lfloor f V_{\max}\rfloor + 1$ well-defined;
+    under rate-scaling the bracket comes from the waterfall instead (the
+    entitled-value cap for an uncovered checkpoint, the contraction
+    bracket for a covered one; \cref{sec:existence:sign}), so a finite
+    $V_{\max}$ is not required there.
 \end{description}
 
 The proof never differentiates $F$, so it survives the
