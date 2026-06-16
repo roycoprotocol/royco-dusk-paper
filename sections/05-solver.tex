@@ -194,13 +194,142 @@ $y_0$, and its orientation depends on the token sort:
 % handles token ordering and the y0 recentering handles rate scaling,
 % but the closed form must be verified against the pool's price
 % convention before publication. Do not assert a bare formula until then.
-After solving,
-the kernel checks $x^\star \in [N\alpha, N\beta]$. If $x^\star$
-falls outside, the rate is real but unquotable: the sync reverts rather than clipping to a band edge and
-publishing a rate the pool cannot honour. This is the only
-market-condition revert after the curve is frozen, and it is a genuine economic
-signal (a senior loss larger than the pool's band can represent), not a
-solver fragility.
+After solving, the kernel checks $x^\star \in [N\alpha, N\beta]$. When it
+holds, the kernel publishes $y^\star$ and operations proceed normally.
+When $x^\star$ falls outside, the rate is real but unquotable --- and the
+kernel does \emph{not} revert the sync. The solved root is still the honest
+mark: NAV conservation holds and $P_A$ is a conservative lower bound
+whatever the band (below it the valuation is the all-senior extension of
+\cref{sec:solver:convergence}), so the accountant checkpoint commits at
+$y^\star$ as usual. What the kernel withholds is the \emph{tradeable} rate.
+An unquotable rate would have the pool price against a value it cannot
+represent, so its secondary market is suspended: operations that consume a
+quote --- swaps and unbalanced, single-sided liquidity --- revert, while
+operations that do not --- primary senior issuance and redemption, which
+touch only the senior tranche's exogenous assets, and proportional junior
+add and remove, which is balance-ratio math with no price --- proceed
+against the committed checkpoint. Senior protection across this state is
+held by the shared accountant's coverage requirement, which gates junior
+withdrawals independently of the band; the band governs only what the pool
+can \emph{quote}, never whether the market can \emph{settle}. The
+out-of-band condition is thus a genuine economic signal --- a senior loss
+larger than the pool's band can represent --- and the response is to close
+the secondary market while keeping primary issuance and redemption live,
+not to freeze the market. Which operations read the published rate, and so
+which the suspension must gate, is an implementation obligation
+(\cref{sec:solver:freshness}).
+
+\subsection{Computing the bracket endpoint}
+\label{sec:solver:endpoint}
+
+The upper endpoint $x_{\max} = \STraw + \lfloor f\,V_{\max}\rfloor + 1$
+(\cref{thm:main}) needs one pool-derived number: a conservative upper
+bound on the junior mark. Since $P_A(y) = \lfloor f\,\widehat{V}(y)\rfloor$
+and $\widehat{V}$ is non-decreasing with $\widehat{V}' = \Dc = \min(D, N)$
+vanishing above the band, the mark is largest at the upper band edge,
+\[
+  \sup_{y} \widehat{V}(y) \;=\; \widehat{V}(\beta) \;\leq\; V_{\max}.
+\]
+The implementation uses this tighter $\widehat{V}(\beta)$: it is the exact
+supremum of the clamped valuation, whereas $V_{\max} = \sup_y V(y)$
+over-marks by the area the clamp discards. The bracketing argument of
+\cref{sec:existence:sign} is untouched, since
+$P_A \leq \lfloor f\,\widehat{V}(\beta)\rfloor \leq \lfloor f\,V_{\max}\rfloor$
+at every candidate. This subsection records how $\widehat{V}(\beta)$ is
+computed; the construction is pool-specific and given here for the Gyro
+E-CLP.
+
+\paragraph{The threshold rate.}
+$D(y)$, the pool's demand for senior shares (equivalently the senior
+reserve at the fair point), is non-increasing in $y$: it sits at its
+all-senior plateau $D(\alpha)$ below the band, falls across it, and reaches
+$0$ at the all-quote corner $\beta$. The clamp $\min(D, N)$ binds exactly
+where $D > N$. If $D(\alpha) \leq N$ the pool can never demand more senior
+shares than exist, the clamp never binds, and $\widehat{V}(\beta) =
+V_{\max}$. Otherwise there is a unique \emph{threshold rate} $y_N$ in the
+band with
+\[
+  D(y_N) \;=\; N,
+\]
+the clamp binding on $[0, y_N]$ and releasing on $[y_N, \beta]$.
+
+\paragraph{The corner value.}
+Splitting $\widehat{V}(\beta) = \int_0^\beta \min(D, N)$ at $y_N$ --- the
+integrand is the constant $N$ below it and $D = V'$ above it, which
+telescopes --- gives the closed form of the Clamp obligation
+(\cref{sec:solver:obligations}) evaluated at the corner:
+\begin{equation}
+  \widehat{V}(\beta)
+    \;=\; \underbrace{N\,y_N}_{\text{clamped rectangle}}
+        \;+\; \underbrace{\bigl(V(\beta) - V(y_N)\bigr)}_{\text{unclamped tail}}
+    \;=\; V_{\max} - b_q(y_N),
+  \label{eq:vhat-beta}
+\end{equation}
+where $b_q(y_N)$ is the quote reserve at the threshold point; the compact
+right-hand form uses the fair-point identity
+$V(y_N) = b_q(y_N) + y_N\,D(y_N) = b_q(y_N) + N\,y_N$. Read plainly: the
+conservative corner is the all-quote value minus the quote the pool already
+holds at the rate where its senior demand first meets the supply. The
+discarded difference $V_{\max} - \widehat{V}(\beta)$ is exactly the
+phantom-coverage gap of \cref{sec:setup:PA}, the value resting on senior
+shares beyond the $N$ that exist.
+
+\begin{figure}[!ht]
+\centering
+\begin{tikzpicture}[
+  >={Stealth[length=2.2mm]},
+  font=\small,
+  scale=0.62,
+]
+  \def\a{2}\def\yN{4.88}\def\b{8}
+  % shaded clamped area = min(D, N): rectangle [0,yN]x[0,N] + tail under D
+  \fill[blue!12] (0,0) rectangle (\yN,2.6);
+  \fill[blue!12] (\yN,0) -- (\yN,2.6) -- (\b,0) -- cycle;
+  % axes
+  \draw[->] (0,0) -- (9.6,0) node[right] {$y$};
+  \draw[->] (0,0) -- (0,6.3) node[above] {$D(y)$};
+  % N line
+  \draw[dashed] (0,2.6) node[left] {$N$} -- (\b,2.6);
+  % demand D: plateau on [0,a], linear down to 0 at b
+  \draw[very thick, blue] (0,5) -- (\a,5) -- (\b,0);
+  \node[blue] at (6.5,1.55) {$D$};
+  \node[blue, anchor=west] at (0.15,5.4) {\footnotesize $D(\alpha)$};
+  % band markers
+  \draw[dashed] (\a,0) node[below] {$\alpha$} -- (\a,5);
+  \draw[dashed] (\yN,0) node[below] {$y_N$} -- (\yN,2.6);
+  \node[below] at (\b,0) {$\beta$};
+  % piece labels
+  \node[font=\footnotesize] at (2.1,1.1) {$N\,y_N$};
+  \node[font=\footnotesize] at (5.75,0.62) {$V(\beta){-}V(y_N)$};
+\end{tikzpicture}
+\caption{The bracket endpoint $\widehat{V}(\beta) = \int_0^\beta \min(D,N)$
+is the shaded area under $\min(D, N)$: a rectangle of height $N$ and width
+$y_N$ where the clamp binds, plus the tail under $D$ from $y_N$ to the
+all-quote corner $\beta$. The unshaded wedge between $D$ and the line $N$ on
+$[0, y_N]$ --- largest near $y = 0$, where E-CLP demand grows without
+bound --- is the phantom coverage the clamp discards, exactly
+$V_{\max} - \widehat{V}(\beta)$.}
+\label{fig:vhat-beta}
+\end{figure}
+
+\paragraph{Closed form on the E-CLP.}
+Each quantity in \cref{eq:vhat-beta} is closed-form on the frozen curve.
+$V_{\max} = V(\beta)$ is the rate-scaled quote reserve at the all-quote
+corner --- the curve's maximal balance for the quote leg at the frozen
+invariant $L$. The threshold $y_N$ is the marginal price at which the
+senior real reserve equals $N$, recovered by inverting the
+reserve--price relation, and $b_q(y_N)$ is the conjugate reserve there.
+All three are evaluations on the same frozen curve the probes use
+(\cref{sec:setup:PA}); none re-triggers the pool's domain check.
+
+\paragraph{Rounding.}
+$\widehat{V}(\beta)$ is the one quantity rounded \emph{up}. Every other
+rounding favours the senior tranche by rounding down (the floor in $P_A$,
+the invariant $L$, the published rate); an endpoint instead must certify a
+sign, so it may not underestimate the mark it bounds. Rounding
+$\widehat{V}(\beta)$ up --- equivalently, one wei added to a rounded-down
+library output --- keeps $x_{\max}$ a strict over-estimate and the
+bracketing of \cref{thm:main} intact.
 
 \subsection{Why the solve always converges}
 \label{sec:solver:convergence}
@@ -289,8 +418,9 @@ the solve converge, the third keeps every step conservative.
     and its rate $q$.
   \item[Frozen curve.] $L$ is computed once per solve from the balances
     scaled at $y_0$, rounded down (the underestimate), and held fixed across the
-    bisection. $V_{\max}$ is the value at the upper corner of this same
-    frozen curve.
+    bisection. The bracket endpoint is the clamped corner
+    $\widehat{V}(\beta) \leq V_{\max}$ of \cref{sec:solver:endpoint},
+    computed from this same frozen curve and rounded up.
   \item[Clamp.] The valuation uses the integral form
     $\widehat{V}(y) = \int_0^y \min(D, N)$ (\cref{sec:setup:PA}), with $N$
     read at solve start. In closed form this is $N y$ below the rate
@@ -344,6 +474,16 @@ and pool rather than on the solve, and are listed for the implementer.
   \item[Failure semantics.] A failed sync reverts the operation and does
     not overwrite the cache, and ordinary view reads still return the
     last published rate (\cref{sec:solver:convergence}).
+  \item[Unquotable rate.] When the solved root falls outside the
+    expressible range $[N\alpha, N\beta]$ (\cref{sec:solver:bracket}), the
+    sync still commits the checkpoint at $y^\star$; the kernel withholds
+    $y^\star$ as a tradeable rate and gates the pool's secondary market.
+    Operations that consume a quote (swaps, unbalanced liquidity) revert;
+    primary senior issuance and redemption and proportional junior
+    add and remove proceed. The implementer must confirm which Balancer
+    paths read the published rate --- in particular that proportional
+    removes settle on raw balances without it --- and wire the suspension
+    to match. The last quotable rate is left cached for view reads.
   \item[Recovery mode.] Recovery-mode removes are a separate path, not
     bound by this contract.
 \end{description}
