@@ -168,32 +168,26 @@ invariant solver, so no probe re-triggers the E-CLP domain check. That
 check runs once, when $L$ is computed at solve start from the live
 balances.
 
-The largest root $x^\star$ is the economically correct answer, but the deployed pool can only
-\emph{quote} rates inside its price band. Write $\alpha$ and $\beta$ for
-the lower and upper bounds on the senior rate $y = x/N$ \emph{after} the
-mapping below. The expressible range is then
+The largest root $x^\star$ is the economically correct answer, but the
+deployed pool can only \emph{quote} rates inside its price band. Write
+$\alpha$ and $\beta$ for the lower and upper bounds on the senior rate
+$y = x/N$ after the pool's configured price band has been mapped into
+senior-rate units. With this convention the expressible range is
 \begin{equation}
   x \;\in\; [N\alpha,\ N\beta].
 \end{equation}
-These bounds are per-solve. The pool's configured band constrains the
-\emph{rate-scaled} senior price, so it is recentered at the cached rate
-$y_0$, and its orientation depends on the token sort:
-\begin{itemize}
-  \item if the senior share is token0 (price quoted as quote-per-senior),
-    the senior-rate bounds are the configured bounds directly.
-  \item if the senior share is token1 (price quoted as senior-per-quote),
-    they are the reciprocals of the configured bounds, swapped, then
-    recentered at $y_0$. At rates near $1$ this reduces to the
-    $[N/\beta,\, N/\alpha]$ form of earlier materials. The exact
-    rate-scaling factor in this mapping is pending verification against
-    the deployed pool's convention.
-\end{itemize}
-% TODO(eclp-scaling): confirm the exact y0 rate-scaling factor in the
-% token1 reciprocal mapping against the deployed Gyro E-CLP convention.
-% The configured bounds sit on the rate-scaled price; the reciprocal
-% handles token ordering and the y0 recentering handles rate scaling,
-% but the closed form must be verified against the pool's price
-% convention before publication. Do not assert a bare formula until then.
+The symbols $\alpha$ and $\beta$ are therefore paper-level senior-rate
+bounds, not necessarily the raw token0/token1 bounds stored in the pool.
+
+The implementation must compute these senior-rate bounds from the
+deployed pool configuration. That mapping depends on the actual token
+ordering, the pool's price convention, and the rate-scaling convention:
+if the configured price is quote-per-senior the orientation is direct,
+while if it is senior-per-quote the bounds are reciprocals and swapped.
+Because Balancer token ordering is determined by token addresses, the
+implementation must derive this mapping from the registered pool tokens
+rather than hard-coding either orientation.
+
 After solving, the kernel checks $x^\star \in [N\alpha, N\beta]$. When it
 holds, the kernel publishes $y^\star$ and operations proceed normally.
 When $x^\star$ falls outside, the rate is real but unquotable --- and the
